@@ -18,27 +18,10 @@ app.use(express.json({}))
 app.use(cookieParser())
 app.use(bodyParser.urlencoded({extended:true}))
 
-const allowedOrigins = [
-  'http://localhost:3000',
-  'http://localhost:5173',
-  'https://freshy-food-frontend.vercel.app',
-  process.env.Frontend_Url
-];
-
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    } else {
-      return callback(new Error("CORS blocked: " + origin));
-    }
-  },
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
-}));
-
-app.options('*', cors());
+    origin:true,
+    credentials: true
+}))
 
 
 
