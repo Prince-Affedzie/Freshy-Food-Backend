@@ -21,6 +21,7 @@ app.use(bodyParser.urlencoded({extended:true}))
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
+  'https://freshy-food-frontend.vercel.app',
   process.env.Frontend_Url
 ];
 
