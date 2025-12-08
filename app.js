@@ -19,7 +19,7 @@ app.use(cookieParser())
 app.use(bodyParser.urlencoded({extended:true}))
 
 app.use(cors({
-    origin:true,
+    origin:'https://freshy-food-frontend.vercel.app',
     credentials: true
 }))
 
