@@ -18,12 +18,26 @@ app.use(express.json({}))
 app.use(cookieParser())
 app.use(bodyParser.urlencoded({extended:true}))
 
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  process.env.Frontend_Url
+];
+
 app.use(cors({
-  origin: process.env.Frontend_Url,   
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE"],
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      return callback(new Error("CORS blocked: " + origin));
+    }
+  },
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"]
-}))
+}));
+
+app.options('*', cors());
 
 
 
