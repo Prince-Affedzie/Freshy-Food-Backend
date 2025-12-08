@@ -19,8 +19,10 @@ app.use(cookieParser())
 app.use(bodyParser.urlencoded({extended:true}))
 
 app.use(cors({
-    origin:true,
-    credentials: true
+  origin: process.env.Frontend_Url,   
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  allowedHeaders: ["Content-Type", "Authorization"]
 }))
 
 
