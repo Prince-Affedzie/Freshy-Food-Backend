@@ -17,9 +17,10 @@ const app  = express()
 app.use(express.json({}))
 app.use(cookieParser())
 app.use(bodyParser.urlencoded({extended:true}))
+app.set('trust proxy', 1);
 
 app.use(cors({
-    origin:'https://freshy-food-frontend.vercel.app',
+    origin: '*',
     credentials: true
 }))
 
