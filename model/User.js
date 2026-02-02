@@ -11,7 +11,11 @@ const userSchema = new mongoose.Schema({
   trim: true // Recommended to prevent " user@email.com" issues
 },
  password: { type: String,default:null, }, 
- phone: { type: String, unique: true ,sparse: true,}, 
+ phone: {
+  type: String,
+  unique: true,
+  sparse: true 
+ },
  isAdmin: { type: Boolean, default: false, required: true },
  role:{type:String ,default:'customer'},
  address: { type: String, default: '' },
