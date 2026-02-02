@@ -12,7 +12,7 @@ const WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
 
 // Helper function to format price
 const formatPrice = (price) => {
-  return `₵${price.toFixed(2)}`;
+  return price.toFixed(2);
 };
 
 // Helper function to format date
@@ -53,32 +53,22 @@ const generateOrderSummary = (order) => {
 // @route   POST /api/orders
 // @access  Private
 const createOrder = asyncHandler(async (req, res) => {
+  const {id} = req.user
   try {
     const {
+      paymentId,
       orderItems,
       shippingAddress,
       paymentMethod,
       deliverySchedule,
       deliveryNote,
       package: packageInfo,
-      pricing,
-      customer,
     } = req.body;
 
   
     let userId;
    
-      let user = await User.findOne({ email: customer.email.toLowerCase(),phone:customer.phone });
-
-      if (!user) {
-        user = await User.create({
-          firstName: customer.firstName.trim(),
-          lastName: customer.lastName.trim(),
-          email: customer.email.toLowerCase(),
-          phone: customer.phone,
-          role: 'customer',
-        });
-    } 
+    let user = await User.findById(id);
 
     userId = user._id;
 
@@ -89,11 +79,6 @@ const createOrder = asyncHandler(async (req, res) => {
     if (!shippingAddress?.address || !shippingAddress?.city || !shippingAddress?.phone) {
       return res.status(400).json({ success: false, message: 'Incomplete shipping address' });
     }
-
-    if (!paymentMethod || !packageInfo) {
-      return res.status(400).json({ success: false, message: 'Missing payment method or package' });
-    }
-
     // Validate products & calculate price
     const items = [];
     let itemsPrice = 0;
@@ -136,13 +121,8 @@ const createOrder = asyncHandler(async (req, res) => {
 
     // Create order
     const order = new Order({
+      paymentId:paymentId,
       user: userId,
-      package: {
-        id: packageInfo.id,
-        name: packageInfo.name,
-        basePrice: packageInfo.basePrice,
-        valuePrice: packageInfo.valuePrice || null
-      },
       orderItems: items,
       shippingAddress: {
         ...shippingAddress,
@@ -155,9 +135,10 @@ const createOrder = asyncHandler(async (req, res) => {
       deliveryNote,
       itemsPrice,
       deliveryFee,
+      isPaid:true,
       totalPrice,
       paymentMethod,
-      status: paymentMethod === 'cash_on_delivery' ? 'Pending' : 'Processing',
+      status:'Processing',
       wasGuestCheckout: !req.user // mark if converted from guest
     });
 
@@ -175,6 +156,10 @@ const createOrder = asyncHandler(async (req, res) => {
     const populatedOrder = await Order.findById(createdOrder._id)
       .populate('user', 'firstName lastName email phone')
       .populate('orderItems.product', 'name');
+
+    user.cartItems = []
+    user.orders.push({ orderId:order._id})
+    await user.save()
 
     // Send notifications
     /*try { await sendWhatsAppNotification(populatedOrder); } catch (e) { console.error(e); }
@@ -215,16 +200,10 @@ const createOrder = asyncHandler(async (req, res) => {
 // @access  Private
 const getOrderById = asyncHandler(async (req, res) => {
   try {
+    console.log(req.params)
     const orderId = req.params.id;
+    console.log(orderId)
     const userId = req.user.id;
-
-    // Validate ObjectId
-    if (!mongoose.Types.ObjectId.isValid(orderId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid order ID format'
-      });
-    }
 
     const order = await Order.findById(orderId)
       .populate('user', 'name email phone')
@@ -238,7 +217,7 @@ const getOrderById = asyncHandler(async (req, res) => {
     }
 
     // Check if user is authorized (owner or admin)
-    if (order.user._id.toString() !== userId && !req.user.isAdmin) {
+    if (order.user._id.toString() !== userId ) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to view this order'
@@ -345,6 +324,135 @@ const getOrderById = asyncHandler(async (req, res) => {
       }
     });
   } catch (error) {
+    console.log(error)
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching order',
+      error: error.message
+    });
+  }
+});
+
+
+const adminGetOrderById = asyncHandler(async (req, res) => {
+  try {
+    console.log(req.params)
+    const orderId = req.params.id;
+    console.log(orderId)
+    
+
+    const order = await Order.findById(orderId)
+      .populate('user', 'firstName email phone')
+      .populate('orderItems.product', 'name category unit image');
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    
+    const timeline = [
+      {
+        status: 'Order Placed',
+        date: order.createdAt,
+        completed: true,
+        description: 'Order received and confirmed'
+      },
+      {
+        status: 'Payment',
+        date: order.isPaid ? order.paidAt : null,
+        completed: order.isPaid,
+        description: order.isPaid ? `Paid via ${order.paymentMethod}` : 'Awaiting payment'
+      },
+      {
+        status: 'Processing',
+        date: order.status === 'Processing' ? new Date() : null,
+        completed: ['Processing', 'Out for Delivery', 'Delivered'].includes(order.status),
+        description: 'Preparing your items'
+      },
+      {
+        status: 'Out for Delivery',
+        date: order.status === 'Out for Delivery' ? new Date() : null,
+        completed: ['Out for Delivery', 'Delivered'].includes(order.status),
+        description: 'On the way to your address'
+      },
+      {
+        status: 'Delivered',
+        date: order.deliveredAt,
+        completed: order.isDelivered,
+        description: order.isDelivered ? 'Delivered successfully' : 'Expected delivery'
+      }
+    ];
+
+    res.status(200).json({
+      success: true,
+      data: {
+        id: order._id,
+        orderNumber: order._id.toString().slice(-8).toUpperCase(),
+        user: {
+          id: order.user._id,
+          name: order.user.firstName,
+          email: order.user.email,
+          phone: order.user.phone
+        },
+        orderItems: order.orderItems.map(item => ({
+          id: item.product?._id || item.product,
+          name: item.name,
+          quantity: item.quantity,
+          unit: item.unit,
+          image: item.image,
+          price: formatPrice(item.price),
+          totalPrice: formatPrice(item.price * item.quantity),
+          product: item.product?._id ? {
+            id: item.product._id,
+            name: item.product.name,
+            category: item.product.category,
+            unit: item.product.unit,
+            image: item.product.image
+          } : null
+        })),
+        shippingAddress: order.shippingAddress,
+        pricing: {
+          itemsPrice: order.itemsPrice,
+          itemsPriceDisplay: formatPrice(order.itemsPrice),
+          deliveryFee: order.deliveryFee,
+          deliveryFeeDisplay: formatPrice(order.deliveryFee),
+          totalPrice: order.totalPrice,
+          totalPriceDisplay: formatPrice(order.totalPrice)
+        },
+        payment: {
+          method: order.paymentMethod,
+          isPaid: order.isPaid,
+          paidAt: order.paidAt,
+          paidAtDisplay: formatDate(order.paidAt)
+        },
+        delivery: {
+          date: order.deliveryDate,
+          dateDisplay: formatDate(order.deliveryDate),
+          isDelivered: order.isDelivered,
+          deliveredAt: order.deliveredAt,
+          deliveredAtDisplay: formatDate(order.deliveredAt),
+          note: order.deliveryNote
+        },
+        status: {
+          current: order.status,
+          isPaid: order.isPaid,
+          isDelivered: order.isDelivered,
+          timeline
+        },
+        dates: {
+          createdAt: order.createdAt,
+          createdAtDisplay: formatDate(order.createdAt),
+          updatedAt: order.updatedAt,
+          updatedAtDisplay: formatDate(order.updatedAt)
+        },
+        subscriptionId: order.subscriptionId
+      }
+    });
+  } catch (error) {
+    console.log(error)
     res.status(500).json({
       success: false,
       message: 'Error fetching order',
@@ -772,6 +880,7 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
   try {
     const orderId = req.params.id;
     const { status, notes } = req.body;
+    console.log(req.body)
 
     if (!mongoose.Types.ObjectId.isValid(orderId)) {
       return res.status(400).json({
@@ -781,13 +890,13 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
     }
 
     const validStatuses = ['Pending', 'Processing', 'Out for Delivery', 'Delivered', 'Cancelled'];
-    if (!validStatuses.includes(status)) {
+   /* if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
         message: 'Invalid status',
         validStatuses
       });
-    }
+    }*/
 
     const order = await Order.findById(orderId)
       .populate('user', 'name phone');
@@ -826,12 +935,12 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
 
     const updatedOrder = await order.save();
 
-    // Send status update notification
+    /* Send status update notification
     try {
       await sendStatusUpdateNotification(updatedOrder, oldStatus);
     } catch (notificationError) {
       console.error('Status notification failed:', notificationError);
-    }
+    }*/
 
     res.status(200).json({
       success: true,
@@ -846,6 +955,7 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
       }
     });
   } catch (error) {
+    console.log(error)
     res.status(500).json({
       success: false,
       message: 'Error updating order status',
@@ -1197,6 +1307,7 @@ const sendCancellationNotification = async (order, reason) => {
 module.exports = {
   createOrder,
   getOrderById,
+  adminGetOrderById,
   getMyOrders,
   getAllOrders,
   updateOrderToPaid,

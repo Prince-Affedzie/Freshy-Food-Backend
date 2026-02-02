@@ -7,11 +7,17 @@ const orderSchema = new mongoose.Schema({
     required: true
   },
 
+  paymentId:{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Payment',
+    required: true
+  },
+
   // Add package info
   package: {
     id: { type: mongoose.Schema.Types.ObjectId, ref: 'Package' },
-    name: { type: String, required: true },
-    basePrice: { type: Number, required: true },
+    name: { type: String,  },
+    basePrice: { type: Number,  },
     valuePrice: { type: Number }, // optional benchmark
   },
 
@@ -33,7 +39,7 @@ const orderSchema = new mongoose.Schema({
   shippingAddress: {
     address: { type: String, required: true },
     city: { type: String, required: true },
-    region: { type: String, required: true },
+    region: { type: String,  },
     nearestLandmark: { type: String },
     phone: { type: String, required: true }
   },
@@ -49,7 +55,7 @@ const orderSchema = new mongoose.Schema({
   deliveryFee: { type: Number, required: true, default: 0 },
   totalPrice: { type: Number, required: true },
 
-  paymentMethod: { type: String, required: true },
+  paymentMethod: { type: String, default:null},
   isPaid: { type: Boolean, default: false },
   paidAt: { type: Date },
   isDelivered: { type: Boolean, default: false },

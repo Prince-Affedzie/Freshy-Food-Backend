@@ -131,6 +131,7 @@ const getAllProducts = asyncHandler(async (req, res) => {
     const totalPages = Math.ceil(total / limitNum);
     const hasNextPage = pageNum < totalPages;
     const hasPrevPage = pageNum > 1;
+    
 
     res.status(200).json({
       success: true,
@@ -170,17 +171,14 @@ const getAllProducts = asyncHandler(async (req, res) => {
 const getProductById = asyncHandler(async (req, res) => {
   try {
     const { identifier } = req.params;
+    console.log(req.params)
 
     let product;
     
     // Check if identifier is a valid ObjectId
-    if (mongoose.Types.ObjectId.isValid(identifier)) {
-      product = await Product.findById(identifier);
-    } else {
-      // Otherwise treat as slug
-      product = await Product.findOne({ slug: identifier });
-    }
-
+    
+    product = await Product.findById(identifier);
+    
     if (!product) {
       return res.status(404).json({
         success: false,
@@ -238,8 +236,8 @@ const getProductById = asyncHandler(async (req, res) => {
         }))
       }
     };
-
-    res.status(200).json(product);
+   
+    res.status(200).json(response);
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -255,15 +253,48 @@ const getProductById = asyncHandler(async (req, res) => {
 const getProductsByCategory = asyncHandler(async (req, res) => {
   try {
     const { category } = req.params;
-    const { sort = 'name', limit = 50 } = req.query;
+    const { sort = 'name', limit = 50, page = 1 } = req.query;
 
-    // Validate category
-    const validCategories = ['vegetable', 'fruit', 'staple', 'herb', 'other', 'tuber'];
-    if (!validCategories.includes(category)) {
+    // Normalize category input (lowercase, trim)
+    const normalizedCategory = category.toLowerCase().trim();
+    
+    // Define valid categories and their variations
+    const categoryMappings = {
+      'vegetable': ['vegetable', 'vegetables', 'veg', 'veggies'],
+      'fruit': ['fruit', 'fruits'],
+      'staple': ['staple', 'staples', 'grain', 'grains', 'cereal'],
+      'herb': ['herb', 'herbs', 'spice', 'spices'],
+      'tuber': ['tuber', 'tubers', 'root', 'roots'],
+      'other': ['other', 'others', 'misc', 'miscellaneous'],
+      'grain':['grain'],
+      'cereal':['cereal'],
+      'meat':['meat'],
+      'frozen-food':['frozen-food'],
+      'poultry':['poultry'],
+      'seafood':['seafood'],
+      'spice':['spice'],
+    };
+
+    // Find the standardized category name
+    let standardizedCategory = null;
+    for (const [standard, variations] of Object.entries(categoryMappings)) {
+      if (variations.includes(normalizedCategory)) {
+        standardizedCategory = standard;
+        break;
+      }
+    }
+
+    // If no match found, check if it's already a standard category
+    if (!standardizedCategory && Object.keys(categoryMappings).includes(normalizedCategory)) {
+      standardizedCategory = normalizedCategory;
+    }
+
+    if (!standardizedCategory) {
       return res.status(400).json({
         success: false,
         message: 'Invalid category',
-        validCategories
+        validCategories: Object.keys(categoryMappings),
+        acceptedVariations: categoryMappings
       });
     }
 
@@ -279,38 +310,107 @@ const getProductsByCategory = asyncHandler(async (req, res) => {
       case 'stock-desc':
         sortOption = { countInStock: -1 };
         break;
+      case 'newest':
+        sortOption = { createdAt: -1 };
+        break;
+      case 'popular':
+        sortOption = { 'reviews.rating': -1 };
+        break;
       default:
         sortOption = { name: 1 };
     }
 
+    // Pagination
+    const limitValue = parseInt(limit) || 50;
+    const pageValue = Math.max(parseInt(page) || 1, 1);
+    const skip = (pageValue - 1) * limitValue;
+
+    // Case-insensitive category query using regex
     const products = await Product.find({ 
-      category, 
+      category: { $regex: new RegExp(`^${standardizedCategory}$`, 'i') },
       isAvailable: true 
     })
     .sort(sortOption)
-    .limit(parseInt(limit))
-    .select('name slug image price unit countInStock description');
+    .skip(skip)
+    .limit(limitValue)
+    .select('name slug image price unit countInStock description category createdAt updatedAt');
+
+    // Get total count for pagination
+    const totalProducts = await Product.countDocuments({ 
+      category: { $regex: new RegExp(`^${standardizedCategory}$`, 'i') },
+      isAvailable: true 
+    });
+
+    // Calculate pagination info
+    const totalPages = Math.ceil(totalProducts / limitValue);
+    const hasNextPage = pageValue < totalPages;
+    const hasPrevPage = pageValue > 1;
 
     // Category statistics
+    const categoryProducts = await Product.find({ 
+      category: { $regex: new RegExp(`^${standardizedCategory}$`, 'i') },
+      isAvailable: true 
+    }).select('price countInStock');
+
     const categoryStats = {
-      total: products.length,
-      inStock: products.filter(p => p.countInStock > 0).length,
-      outOfStock: products.filter(p => p.countInStock === 0).length,
-      lowStock: products.filter(p => p.countInStock <= 10 && p.countInStock > 0).length,
-      priceRange: products.length > 0 ? {
-        min: Math.min(...products.map(p => p.price)),
-        max: Math.max(...products.map(p => p.price)),
-        avg: products.reduce((sum, p) => sum + p.price, 0) / products.length
+      total: categoryProducts.length,
+      inStock: categoryProducts.filter(p => p.countInStock > 0).length,
+      outOfStock: categoryProducts.filter(p => p.countInStock === 0).length,
+      lowStock: categoryProducts.filter(p => p.countInStock <= 10 && p.countInStock > 0).length,
+      priceRange: categoryProducts.length > 0 ? {
+        min: Math.min(...categoryProducts.map(p => p.price)),
+        max: Math.max(...categoryProducts.map(p => p.price)),
+        avg: parseFloat((categoryProducts.reduce((sum, p) => sum + p.price, 0) / categoryProducts.length).toFixed(2))
       } : null
+    };
+
+    // Helper function for category display name
+    const getCategoryDisplay = (cat) => {
+      const displayNames = {
+        'vegetable': 'Vegetables',
+        'fruit': 'Fruits',
+        'staple': 'Staples',
+        'herb': 'Herbs & Spices',
+        'tuber': 'Roots & Tubers',
+        'other': 'Other Products'
+      };
+      return displayNames[cat] || cat.charAt(0).toUpperCase() + cat.slice(1);
+    };
+
+    // Helper function for unit display
+    const getUnitDisplay = (unit) => {
+      const unitMap = {
+        'kg': 'Kilogram',
+        'g': 'Gram',
+        'lb': 'Pound',
+        'piece': 'Piece',
+        'bunch': 'Bunch',
+        'pack': 'Pack',
+        'dozen': 'Dozen'
+      };
+      return unitMap[unit] || unit;
     };
 
     res.status(200).json({
       success: true,
       category: {
-        name: category,
-        displayName: getCategoryDisplay(category)
+        id: standardizedCategory,
+        name: standardizedCategory,
+        displayName: getCategoryDisplay(standardizedCategory),
+        originalRequest: category,
+        normalizedRequest: normalizedCategory
       },
       stats: categoryStats,
+      pagination: {
+        currentPage: pageValue,
+        totalPages: totalPages,
+        totalProducts: totalProducts,
+        productsPerPage: limitValue,
+        hasNextPage: hasNextPage,
+        hasPrevPage: hasPrevPage,
+        nextPage: hasNextPage ? pageValue + 1 : null,
+        prevPage: hasPrevPage ? pageValue - 1 : null
+      },
       count: products.length,
       data: products.map(p => ({
         id: p._id,
@@ -318,24 +418,28 @@ const getProductsByCategory = asyncHandler(async (req, res) => {
         slug: p.slug,
         image: p.image,
         price: p.price,
-        priceDisplay: formatPrice(p.price),
+        priceDisplay: `GH₵ ${p.price.toFixed(2)}`,
         unit: p.unit,
         unitDisplay: getUnitDisplay(p.unit),
         countInStock: p.countInStock,
         inStock: p.countInStock > 0,
         isLowStock: p.countInStock <= 10 && p.countInStock > 0,
-        description: p.description ? p.description.substring(0, 100) + '...' : null
+        description: p.description ? p.description.substring(0, 100) + '...' : null,
+        category: p.category,
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt
       }))
     });
   } catch (error) {
+    console.error('Error in getProductsByCategory:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching products by category',
-      error: error.message
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
-
 
 const createProduct = asyncHandler(async (req, res) => {
   try {

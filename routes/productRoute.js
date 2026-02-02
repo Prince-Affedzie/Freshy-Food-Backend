@@ -18,7 +18,7 @@ const {
 
 // Public routes
 productrouter.get('/products', getAllProducts);
-productrouter.get('products/category/:category', getProductsByCategory);
+productrouter.get('/products/category/:category', getProductsByCategory);
 productrouter.get('/products/search/:query', searchProducts);
 productrouter.get('/products/seasonal/current', getSeasonalProducts);
 productrouter.get('/product/:identifier', getProductById);
