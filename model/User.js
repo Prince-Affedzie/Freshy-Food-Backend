@@ -13,7 +13,7 @@ const userSchema = new mongoose.Schema({
  password: { type: String,default:null, }, 
  phone: {
   type: String,
-  //unique: true,
+  unique: true,
   sparse: true 
  },
  isAdmin: { type: Boolean, default: false, required: true },
