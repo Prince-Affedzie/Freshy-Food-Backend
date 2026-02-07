@@ -17,6 +17,7 @@ const orderrouter = require('./routes/orderRoute')
 const userRoute = require('./routes/userRoute')
 const userActionRouter = require('./routes/cartAndFavoriteRoute')
 const paymentRoute = require('./routes/paymentRoute')
+const adminRoutes = require('./routes/adminRoutes')
 
 
 const app  = express()
@@ -63,6 +64,7 @@ app.use('/api',orderrouter)
 app.use('/api',userRoute)
 app.use('/api',userActionRouter)
 app.use('/api',paymentRoute)
+app.use('/api',adminRoutes)
 app.set('notificationService', notificationService);
 
 
