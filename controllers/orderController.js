@@ -4,6 +4,8 @@ const User = require('../model/User');
 const asyncHandler = require('express-async-handler');
 const mongoose = require('mongoose');
 const axios = require('axios');
+const NotificationService = require('../services/notificationService');
+
 
 // WhatsApp Business API configuration
 const WHATSAPP_API_URL = process.env.WHATSAPP_API_URL;
@@ -49,11 +51,10 @@ const generateOrderSummary = (order) => {
     `⏰ Ordered: ${formatDate(order.createdAt)}`;
 };
 
-// @desc    Create new order
-// @route   POST /api/orders
-// @access  Private
+
 const createOrder = asyncHandler(async (req, res) => {
   const {id} = req.user
+  const notificationService = req.app.get("notificationService");
   try {
     const {
       paymentId,
@@ -154,23 +155,26 @@ const createOrder = asyncHandler(async (req, res) => {
 
     // Populate for notifications
     const populatedOrder = await Order.findById(createdOrder._id)
-      .populate('user', 'firstName lastName email phone')
+      .populate('user', '_id firstName lastName email phone')
       .populate('orderItems.product', 'name');
 
     user.cartItems = []
     user.orders.push({ orderId:order._id})
     await user.save()
 
-    // Send notifications
-    /*try { await sendWhatsAppNotification(populatedOrder); } catch (e) { console.error(e); }
-    try { await sendCustomerConfirmation(populatedOrder); } catch (e) { console.error(e); }
+   try {
+   await notificationService.notifyCustomerOrderPlaced(
+    populatedOrder.user,
+    populatedOrder
+    );
 
-    // If guest → send welcome email with account info (optional)
-    if (!req.user && guestData) {
-      try {
-        await sendWelcomeGuestAccountEmail(populatedOrder.user, createdOrder);
-      } catch (e) { console.error("Welcome email failed:", e); }
-    }*/
+  await notificationService.notifyAdminsNewOrder(
+    populatedOrder,
+    populatedOrder.user
+  );
+} catch (err) {
+  console.error('Notification failure:', err);
+}
 
     res.status(200).json({
       success: true,
@@ -195,9 +199,7 @@ const createOrder = asyncHandler(async (req, res) => {
   }
 });
 
-// @desc    Get order by ID
-// @route   GET /api/orders/:id
-// @access  Private
+
 const getOrderById = asyncHandler(async (req, res) => {
   try {
     console.log(req.params)
@@ -461,9 +463,7 @@ const adminGetOrderById = asyncHandler(async (req, res) => {
   }
 });
 
-// @desc    Get logged in user orders
-// @route   GET /api/orders/myorders
-// @access  Private
+
 const getMyOrders = asyncHandler(async (req, res) => {
   try {
     const userId = req.user.id;
@@ -563,9 +563,7 @@ const getMyOrders = asyncHandler(async (req, res) => {
   }
 });
 
-// @desc    Get all orders (Admin)
-// @route   GET /api/orders
-// @access  Private/Admin
+
 const getAllOrders = asyncHandler(async (req, res) => {
   try {
     const {
@@ -737,9 +735,7 @@ const getAllOrders = asyncHandler(async (req, res) => {
   }
 });
 
-// @desc    Update order to paid
-// @route   PUT /api/orders/:id/pay
-// @access  Private/Admin
+
 const updateOrderToPaid = asyncHandler(async (req, res) => {
   try {
     const orderId = req.params.id;
@@ -805,9 +801,7 @@ const updateOrderToPaid = asyncHandler(async (req, res) => {
   }
 });
 
-// @desc    Update order to delivered
-// @route   PUT /api/orders/:id/deliver
-// @access  Private/Admin
+
 const updateOrderToDelivered = asyncHandler(async (req, res) => {
   try {
     const orderId = req.params.id;
@@ -873,9 +867,7 @@ const updateOrderToDelivered = asyncHandler(async (req, res) => {
   }
 });
 
-// @desc    Update order status
-// @route   PUT /api/orders/:id/status
-// @access  Private/Admin
+
 const updateOrderStatus = asyncHandler(async (req, res) => {
   try {
     const orderId = req.params.id;

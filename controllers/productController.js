@@ -113,6 +113,7 @@ const getAllProducts = asyncHandler(async (req, res) => {
       categoryDisplay: getCategoryDisplay(product.category),
       image: product.image,
       price: product.price,
+      tags: product.tags,
       priceDisplay: formatPrice(product.price),
       unit: product.unit,
       unitDisplay: getUnitDisplay(product.unit),
@@ -202,6 +203,7 @@ const getProductById = asyncHandler(async (req, res) => {
         name: product.name,
         slug: product.slug,
         category: product.category,
+        tags: product.tags,
         categoryDisplay: getCategoryDisplay(product.category),
         image: product.image,
         price: product.price,
@@ -448,6 +450,7 @@ const createProduct = asyncHandler(async (req, res) => {
       category,
       price,
       unit,
+      tags,
       countInStock,
       description,
       isAvailable
@@ -470,7 +473,7 @@ const createProduct = asyncHandler(async (req, res) => {
     }
 
     // Validate category
-    const validCategories = ['vegetable', 'fruit', 'staple', 'herb', 'other', 'tuber'];
+    const validCategories = ['vegetable', 'fruit', 'staple', 'herb', 'other', 'tuber','grain','cereal','meat','frozen-food','poultry','seafood','spice'];
     if (!validCategories.includes(category)) {
       return res.status(400).json({
         success: false,
@@ -558,6 +561,7 @@ const createProduct = asyncHandler(async (req, res) => {
       cloudinaryId: imagePublicId,
       price: priceNumber,
       unit,
+      tags:tags,
       countInStock: stockCount,
       description: description || '',
       isAvailable: isAvailable !== undefined ? (isAvailable === 'true' || isAvailable === true) : true
@@ -612,9 +616,7 @@ const createProduct = asyncHandler(async (req, res) => {
     });
   }
 });
-// @desc    Update product
-// @route   PUT /api/products/:id
-// @access  Private/Admin
+
 const updateProduct = asyncHandler(async (req, res) => {
   try {
     const productId = req.params.id;
@@ -702,7 +704,7 @@ const updateProduct = asyncHandler(async (req, res) => {
 
     // Validate category if being updated
     if (updates.category) {
-      const validCategories = ['vegetable', 'fruit', 'staple', 'herb', 'other', 'tuber'];
+      const validCategories = ['vegetable', 'fruit', 'staple', 'herb', 'other', 'tuber','grain','cereal','meat','frozen-food','poultry','seafood','spice'];
       if (!validCategories.includes(updates.category)) {
         return res.status(400).json({
           success: false,

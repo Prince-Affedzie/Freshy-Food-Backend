@@ -1,67 +1,144 @@
-const {NotificationModel} = require('../model/NotificationModel');
-const {sendPushNotification} = require('./expo-server-notification-sdk')
+const { NotificationModel } = require('../model/NotificationModel');
+const { sendPushNotification } = require('./expo-server-notification-sdk');
 const User = require('../model/User');
+
 
 class NotificationService {
   constructor(socketIO = null) {
     this.socketIO = socketIO;
   }
 
-  /**
-   * Sends a notification and optionally emits it via Socket.IO
-   * @param {Object} options
-   * @param {string} options.userId - Recipient user ID
-   * @param {string} options.message - Notification message
-   * @param {string} options.title - Notification title
-   * @returns {Promise<Notification>} The created notification
-   */
-
-   
   resolveRoleMessage({ role, templates, fallback }) {
-  if (!role) return fallback;
+    if (!role) return fallback;
+    return templates[role] || fallback;
+  }
 
-  return templates[role] || fallback;
- }
+  formatAdminTitle(title) {
+    return title?.startsWith('📢') ? title : `📢 ${title}`;
+  }
 
-
- formatAdminTitle(title) {
-  return title?.startsWith('📢') ? title : `📢 ${title}`;
-}
-
-
-  async sendNotification({ userId, message, title }) {
+  async sendNotification({ userId, title, message }) {
     try {
-
-       const user = await UserModel.findById(userId).select('pushToken');
-       const pushToken = user?.pushToken;
+      const user = await User.findById(userId).select('pushToken');
+      if (!user) return null;
 
       const notification = await NotificationModel.create({
         user: userId,
+        title,
         message,
-        title
       });
 
-      // Emit via Socket.IO if available
+      // Socket.IO
       if (this.socketIO) {
         this.socketIO.to(userId.toString()).emit('notification', notification);
-        console.log(`Socket notification sent to user ${userId}`);
       }
 
-      if (pushToken) {
-        await sendPushNotification(pushToken, title, message);
-        console.log(`Push notification sent to user ${userId}`);
-      } else {
-        console.log(`No push token found for user ${userId}, skipping push notification`);
+      // Push
+      if (user.pushToken) {
+        await sendPushNotification(user.pushToken, title, message);
       }
-      
-      await notification.save();
+
       return notification;
     } catch (error) {
-      console.log('Failed to send notification', { error, userId });
-      throw new Error('Failed to send notification');
+      console.error('Notification error:', error);
+      return null;
     }
   }
 
+
+  // Send notification to all admins
+async notifyAdmins({ title, message }) {
+  try {
+    const admins = await User.find({ isAdmin: true }).select('_id pushToken');
+
+    if (!admins.length) {
+      console.log('No admins found for notification');
+      return;
+    }
+
+    const notifications = [];
+
+    for (const admin of admins) {
+      const notification = await NotificationModel.create({
+        user: admin._id,
+        title: this.formatAdminTitle(title),
+        message,
+      });
+
+      // Socket.IO
+      if (this.socketIO) {
+        this.socketIO
+          .to(admin._id.toString())
+          .emit('notification', notification);
+      }
+
+      // Push notification
+      if (admin.pushToken) {
+        await sendPushNotification(
+          admin.pushToken,
+          this.formatAdminTitle(title),
+          message
+        );
+      }
+
+      notifications.push(notification);
+    }
+
+    return notifications;
+  } catch (error) {
+    console.error('Admin notification failed:', error);
+  }
 }
 
-module.exports = NotificationService
+
+
+async notifyAdminsNewUser(user) {
+  const message = `A new user just signed up.\n\nName: ${user.firstName || 'N/A'}\nEmail: ${user.email}`;
+
+  return this.notifyAdmins({
+    title: 'New User Signup',
+    message,
+  });
+}
+
+
+
+  
+  async notifyCustomerOrderPlaced(user, order) {
+    return this.sendNotification({
+      userId: user._id,
+      title: '🛒 Order Confirmed',
+      message: `Hi ${user.firstName}, your order #${order._id
+        .toString()
+        .slice(-6)} has been received and is being processed.`,
+    });
+  }
+
+  
+  async notifyAdminsNewOrder(order, customer) {
+    const admins = await User.find({ isAdmin: true }).select('_id role');
+
+    const promises = admins.map((admin) => {
+      const message = this.resolveRoleMessage({
+        role: admin.role,
+        templates: {
+          superadmin: `New order placed by ${customer.firstName} (${customer.phone}). Total Ghc${order.totalPrice}`,
+          manager: `New customer order received. Order ID: ${order._id
+            .toString()
+            .slice(-6)}`,
+        },
+        fallback: `New order received.`,
+      });
+
+      return this.sendNotification({
+        userId: admin._id,
+        title: this.formatAdminTitle('New Order'),
+        message,
+      });
+    });
+
+    return Promise.all(promises);
+  }
+}
+
+module.exports = NotificationService;

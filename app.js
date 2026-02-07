@@ -9,7 +9,7 @@ const cors = require('cors')
 require('dotenv').config()
 const NotificationService = require('./services/notificationService');
 const {authenticateSocketConnection} = require('./Validators/authenticateSocketConnection')
-
+const Product = require('./model/Product');
 
 const packagerouter = require('./routes/packageRoute')
 const productrouter = require('./routes/productRoute')
@@ -66,6 +66,8 @@ app.use('/api',userActionRouter)
 app.use('/api',paymentRoute)
 app.use('/api',adminRoutes)
 app.set('notificationService', notificationService);
+
+
 
 
 mongo_connection_url = process.env.DB_URL

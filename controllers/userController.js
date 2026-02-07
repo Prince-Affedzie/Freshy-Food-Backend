@@ -41,6 +41,13 @@ const signUpByGoogle = async (req, res) => {
       user.phone = phone
     }
 
+     try {
+      await notificationService.notifyAdminsNewUser(user);
+    } catch (e) {
+      console.error('Admin signup notification failed:', e);
+    }
+
+
     const apptoken = jwt.sign({id:user._id,role:user.role},process.env.token,{expiresIn:"30d"})
     res.cookie("token",apptoken,{httpOnly:true,sameSite:"None",secure:true})
     //processEvent("NEW_USER",user);
@@ -92,7 +99,8 @@ const google_login = async(req,res)=>{
 }
 
 const signUp = async(req,res)=>{
-    console.log(req.body)
+    //console.log(req.body)
+    const notificationService = req.app.get("notificationService");
     const {firstName,lastName,phone,password} = req.body
     
     console.log("Signing Up")
@@ -116,6 +124,12 @@ const signUp = async(req,res)=>{
     })
 
     await user.save()
+     try {
+      await notificationService.notifyAdminsNewUser(user);
+    } catch (e) {
+      console.error('Admin signup notification failed:', e);
+    }
+
     const token = jwt.sign({id:user._id,role:user.role},process.env.token,{expiresIn:"30d"})
     res.cookie("token",token,{httpOnly:true,sameSite:"None",secure:true})
     res.status(200).json({message:"Registration Successful",role:user.role,user:user,token:token})

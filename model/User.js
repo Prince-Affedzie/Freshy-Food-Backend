@@ -17,7 +17,7 @@ const userSchema = new mongoose.Schema({
   sparse: true 
  },
  isAdmin: { type: Boolean, default: false, required: true },
- role:{type:String ,default:'customer'},
+ role:{type:String ,default:'customer',enum:['customer','admin']},
  address: { type: String, default: '' },
  city: { type: String, default: '' },
  nearestLandmark: { type: String, default: '' } ,
