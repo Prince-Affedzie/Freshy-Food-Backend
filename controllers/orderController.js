@@ -956,12 +956,10 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
   }
 });
 
-// @desc    Cancel order
-// @route   PUT /api/orders/:id/cancel
-// @access  Private
+
 const cancelOrder = asyncHandler(async (req, res) => {
   try {
-    const orderId = req.params.id;
+    const {orderId} = req.params;
     const userId = req.user.id;
     const { reason } = req.body;
     const notificationService = req.app.get("notificationService");
