@@ -834,8 +834,8 @@ const updateOrderToDelivered = asyncHandler(async (req, res) => {
     order.isDelivered = true;
     order.deliveredAt = Date.now();
     order.status = 'Delivered';
-    order.deliveryNotes = deliveryNotes || order.deliveryNotes;
-    order.deliveredBy = deliveredBy;
+    //order.deliveryNotes = deliveryNotes || order.deliveryNotes;
+    //order.deliveredBy = deliveredBy;
 
     const updatedOrder = await order.save();
 
@@ -872,7 +872,7 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
   try {
     const orderId = req.params.id;
     const { status, notes } = req.body;
-    console.log(req.body)
+    const notificationService = req.app.get("notificationService");
 
     if (!mongoose.Types.ObjectId.isValid(orderId)) {
       return res.status(400).json({
@@ -891,7 +891,7 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
     }*/
 
     const order = await Order.findById(orderId)
-      .populate('user', 'name phone');
+      .populate('user', '_id firstName phone ');
 
     if (!order) {
       return res.status(404).json({
@@ -927,12 +927,12 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
 
     const updatedOrder = await order.save();
 
-    /* Send status update notification
+   
     try {
-      await sendStatusUpdateNotification(updatedOrder, oldStatus);
+      await notifyCustomerOrderStatusUpdated(updatedOrder, oldStatus);
     } catch (notificationError) {
       console.error('Status notification failed:', notificationError);
-    }*/
+    }
 
     res.status(200).json({
       success: true,

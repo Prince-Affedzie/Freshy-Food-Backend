@@ -139,6 +139,37 @@ async notifyAdminsNewUser(user) {
 
     return Promise.all(promises);
   }
+
+
+  async notifyCustomerOrderStatusUpdated(order, oldStatus) {
+  try {
+    if (!order?.user?._id) return null;
+
+    const statusMessages = {
+      Pending: "🕒 Your order is pending confirmation.",
+      Processing: "👨‍🍳 Your order is being prepared.",
+      "Out for Delivery": "🚚 Your order is on the way!",
+      Delivered: "✅ Your order has been delivered. Enjoy!",
+      Cancelled: "❌ Your order has been cancelled.",
+    };
+
+    const shortOrderId = order._id.toString().slice(-6);
+
+    const message =
+      statusMessages[order.status] ||
+      `Your order #${shortOrderId} status has been updated to ${order.status}.`;
+
+    return this.sendNotification({
+      userId: order.user._id,
+      title: "📦 Order Status Updated",
+      message: `Order #${shortOrderId}\n\n${message}`,
+    });
+  } catch (error) {
+    console.error("Order status notification failed:", error);
+    return null;
+  }
+}
+
 }
 
 module.exports = NotificationService;
