@@ -170,6 +170,54 @@ async notifyAdminsNewUser(user) {
   }
 }
 
+async sendCancellationNotification(userId,order, reason) {
+  try {
+    const shortOrderId = order._id.toString().slice(-6);
+
+    // Populate user if not populated
+    const customer = await User.findById(userId)
+
+    await this.sendNotification({
+      userId: customer._id,
+      title: "❌ Order Cancelled",
+      message: `Your order #${shortOrderId} has been cancelled successfully.${
+        reason ? `\n\nReason: ${reason}` : ""
+      }`,
+    });
+
+    const admins = await User.find({ isAdmin: true }).select(
+      "_id role pushToken"
+    );
+
+    const adminNotifications = admins.map((admin) => {
+      const message = this.resolveRoleMessage({
+        role: admin.role,
+        templates: {
+          superadmin: `Customer ${customer.firstName} (${customer.phone}) cancelled order #${shortOrderId}.\nReason: ${
+            reason || "No reason provided"
+          }`,
+          manager: `Order #${shortOrderId} has been cancelled by customer.`,
+        },
+        fallback: `Order #${shortOrderId} was cancelled.`,
+      });
+
+      return this.sendNotification({
+        userId: admin._id,
+        title: this.formatAdminTitle("Order Cancelled"),
+        message,
+      });
+    });
+
+    await Promise.all(adminNotifications);
+
+    return true;
+  } catch (error) {
+    console.error("Cancellation notification error:", error);
+    return null;
+  }
+}
+
+
 }
 
 module.exports = NotificationService;

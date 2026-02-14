@@ -21,7 +21,7 @@ const {auth} = require('../middleware/auth');
 orderrouter.post('/order', auth, createOrder);
 orderrouter.get('/myorders',auth, getMyOrders);
 orderrouter.get('/order/:id', auth, getOrderById);
-orderrouter.put('/order/:id/cancel', auth, cancelOrder);
+orderrouter.put('/order/:orderId/cancel', auth, cancelOrder);
 
 // Admin routes
 orderrouter.get('/orders', getAllOrders);

@@ -964,6 +964,7 @@ const cancelOrder = asyncHandler(async (req, res) => {
     const orderId = req.params.id;
     const userId = req.user.id;
     const { reason } = req.body;
+    const notificationService = req.app.get("notificationService");
 
     if (!mongoose.Types.ObjectId.isValid(orderId)) {
       return res.status(400).json({
@@ -982,7 +983,7 @@ const cancelOrder = asyncHandler(async (req, res) => {
     }
 
     // Check if user is authorized
-    if (order.user.toString() !== userId && !req.user.isAdmin) {
+    if (order.user.toString() !== userId) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to cancel this order'
@@ -1019,7 +1020,7 @@ const cancelOrder = asyncHandler(async (req, res) => {
 
     // Send cancellation notification
     try {
-      await sendCancellationNotification(order, reason);
+      await notificationService.sendCancellationNotification(order, reason);
     } catch (notificationError) {
       console.error('Cancellation notification failed:', notificationError);
     }
