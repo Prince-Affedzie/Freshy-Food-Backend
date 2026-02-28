@@ -49,7 +49,7 @@ class NotificationService {
   // Send notification to all admins
 async notifyAdmins({ title, message }) {
   try {
-    const admins = await User.find({ isAdmin: true }).select('_id pushToken');
+    const admins = await User.find({ role: "admin" }).select('_id pushToken');
 
     if (!admins.length) {
       console.log('No admins found for notification');
@@ -116,7 +116,7 @@ async notifyAdminsNewUser(user) {
 
   
   async notifyAdminsNewOrder(order, customer) {
-    const admins = await User.find({ isAdmin: true }).select('_id role');
+    const admins = await User.find({  role: "admin" }).select('_id role');
 
     const promises = admins.map((admin) => {
       const message = this.resolveRoleMessage({
@@ -185,7 +185,7 @@ async sendCancellationNotification(userId,order, reason) {
       }`,
     });
 
-    const admins = await User.find({ isAdmin: true }).select(
+    const admins = await User.find({ role: "admin" }).select(
       "_id role pushToken"
     );
 

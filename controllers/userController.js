@@ -61,6 +61,7 @@ if (!user) {
     res.cookie("token",apptoken,{httpOnly:true,sameSite:"None",secure:true})
     //processEvent("NEW_USER",user);
     //await notificationService.sendWelcomeNotification(user._id)
+    
     res.status(200).json({message:"Registration Successful",role:user.role,user:user,token:apptoken})
   } catch (error) {
     console.log(error)
