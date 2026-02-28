@@ -160,7 +160,7 @@ const login = async(req,res)=>{
        
         const findUser = await User.findOne({phone:phone})
         if(!findUser){
-            return res.status(404).json({message: "Account doesn't Exist"})
+            return res.status(404).json({message: "Account doesn't Exist. Please sign up first"})
         }
         const isPasswordMatch = await bcrypt.compare(password,findUser.password)
         if(!isPasswordMatch){
