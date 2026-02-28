@@ -229,7 +229,7 @@ const deleteAccount = async(req,res)=>{
         if(!user){
             return res.status(404).json({message:'User Account Not Found'})
         }
-        user.deleteOne()
+        await user.deleteOne()
         const {token} = req.cookies
         await res.clearCookie(token,{httpOnly:true,secure:true,sameSite:'Strict'})
         res.status(200).json({message:"User account deleted Successfully"})
