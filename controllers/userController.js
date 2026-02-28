@@ -23,29 +23,38 @@ const signUpByGoogle = async (req, res) => {
     });
     
     const payload = ticket.getPayload();
-    const { email, name,phone, picture, sub: googleId } = payload;
 
-    let user = await User.findOne({ email });
-    if (!user) {
-      user = await User.create({
-        email,
-        firstName: name,
-        phone, 
-        
-      });
-    }else{
-       return res.status(400).json({mesaage: "Email had Already been taken"})
-    }
+const {
+  email,
+  name,
+  given_name,
+  family_name,
+  phone,
+  picture,
+  sub: googleId
+} = payload;
 
-    if(phone) {
-      user.phone = phone
-    }
+const firstName = given_name || (name ? name.trim().split(" ")[0] : "");
+const lastName = family_name || (name ? name.trim().split(" ").slice(1).join(" ") : "");
 
-     try {
-      await notificationService.notifyAdminsNewUser(user);
-    } catch (e) {
+let user = await User.findOne({ email });
+
+if (!user) {
+  user = await User.create({
+    email,
+    firstName,
+    lastName,
+    phone,
+  });
+} else {
+  return res.status(400).json({ message: "Email has already been taken" });
+}
+ 
+  try {
+     await notificationService.notifyAdminsNewUser(user);
+  } catch (e) {
       console.error('Admin signup notification failed:', e);
-    }
+  }
 
 
     const apptoken = jwt.sign({id:user._id,role:user.role},process.env.token,{expiresIn:"30d"})
