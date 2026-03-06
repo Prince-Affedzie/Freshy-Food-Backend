@@ -169,7 +169,7 @@ const getAllProducts = asyncHandler(async (req, res) => {
 
 const getProductsByTag = async (req, res) => {
   try {
-    const tag  = req.params;
+    const {tag} = req.params;
 
     const products = await Product.find({
       tags: tag,
