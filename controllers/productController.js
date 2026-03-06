@@ -166,6 +166,32 @@ const getAllProducts = asyncHandler(async (req, res) => {
   }
 });
 
+
+const getProductsByTag = async (req, res) => {
+  try {
+    const tag  = req.params;
+
+    const products = await Product.find({
+      tags: tag,
+      isAvailable: true
+    });
+
+    res.status(200).json({
+      success: true,
+      count: products.length,
+      data: products
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching products by tag"
+    });
+  }
+};
+
+
 // @desc    Get single product by ID or slug
 // @route   GET /api/products/:identifier
 // @access  Public
@@ -1287,5 +1313,6 @@ module.exports = {
   bulkUpdateAvailability,
   searchProducts,
   getProductStats,
-  getSeasonalProducts
+  getSeasonalProducts,
+  getProductsByTag,
 };

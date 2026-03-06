@@ -12,7 +12,8 @@ const {
   bulkUpdateAvailability,
   searchProducts,
   getProductStats,
-  getSeasonalProducts
+  getSeasonalProducts,
+  getProductsByTag,
 } = require('../controllers/productController');
 //const { protect, admin } = require('../middleware/authMiddleware');
 
@@ -22,6 +23,8 @@ productrouter.get('/products/category/:category', getProductsByCategory);
 productrouter.get('/products/search/:query', searchProducts);
 productrouter.get('/products/seasonal/current', getSeasonalProducts);
 productrouter.get('/product/:identifier', getProductById);
+productrouter.get('/products/tag/:tag', getProductsByTag);
+
 
 // Admin routes
 productrouter.post('/product-add',upload.single('productImage'),createProduct);
