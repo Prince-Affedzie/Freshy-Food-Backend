@@ -3,6 +3,7 @@ const asyncHandler = require('express-async-handler');
 const mongoose = require('mongoose');
 const slugify = require('slugify');
 const cloudinary = require('../Utils/cloudinaryConfig')
+const redis = require("../config/redis");
 
 // Helper function to generate slug
 const generateSlug = (name) => {
@@ -24,38 +25,50 @@ const getAllProducts = asyncHandler(async (req, res) => {
       minPrice,
       maxPrice,
       isAvailable,
-      sort = 'name',
+      sort = "name",
       page = 1,
       limit = 20
     } = req.query;
 
+    // Dynamic cache key based on query params
+    const cacheKey = `products:${JSON.stringify(req.query)}`;
+
+    // Check Redis cache first
+    try {
+      const cachedData = await redis.get(cacheKey);
+      if (cachedData) {
+        return res.status(200).json(JSON.parse(cachedData));
+      }
+    } catch (err) {
+      console.log("Redis read error:", err.message);
+    }
+
     // Build query object
     let query = {};
 
-    // Filter by category
+    // Category filter
     if (category) {
-      if (category === 'all') {
-        // Show all categories
-      } else if (category === 'vegetables') {
-        query.category = { $in: ['vegetable', 'herb', 'tuber'] };
-      } else if (category === 'fruits') {
-        query.category = 'fruit';
-      } else if (category === 'staples') {
-        query.category = { $in: ['staple', 'tuber'] };
+      if (category === "all") {
+      } else if (category === "vegetables") {
+        query.category = { $in: ["vegetable", "herb", "tuber"] };
+      } else if (category === "fruits") {
+        query.category = "fruit";
+      } else if (category === "staples") {
+        query.category = { $in: ["staple", "tuber"] };
       } else {
         query.category = category;
       }
     }
 
-    // Search by name or description
+    // Search filter
     if (search) {
       query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } }
+        { name: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } }
       ];
     }
 
-    // Price range filtering
+    // Price filter
     if (minPrice || maxPrice) {
       query.price = {};
       if (minPrice) query.price.$gte = Number(minPrice);
@@ -64,29 +77,29 @@ const getAllProducts = asyncHandler(async (req, res) => {
 
     // Availability filter
     if (isAvailable !== undefined) {
-      query.isAvailable = isAvailable === 'true';
+      query.isAvailable = isAvailable === "true";
     }
 
     // Sorting
     let sortOption = {};
     switch (sort) {
-      case 'price-asc':
+      case "price-asc":
         sortOption = { price: 1 };
         break;
-      case 'price-desc':
+      case "price-desc":
         sortOption = { price: -1 };
         break;
-      case 'newest':
+      case "newest":
         sortOption = { createdAt: -1 };
         break;
-      case 'stock-desc':
+      case "stock-desc":
         sortOption = { countInStock: -1 };
         break;
-      case 'name-desc':
+      case "name-desc":
         sortOption = { name: -1 };
         break;
       default:
-        sortOption = { name: 1 }; // name-asc
+        sortOption = { name: 1 };
     }
 
     // Pagination
@@ -94,17 +107,17 @@ const getAllProducts = asyncHandler(async (req, res) => {
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
 
-    // Execute query with pagination
+    // Fetch products
     const [products, total] = await Promise.all([
       Product.find(query)
         .sort(sortOption)
         .skip(skip)
         .limit(limitNum)
-        .select('-__v'),
+        .select("-__v"),
       Product.countDocuments(query)
     ]);
 
-    // Transform products for frontend
+    // Transform for frontend
     const transformedProducts = products.map(product => ({
       id: product._id,
       name: product.name,
@@ -128,13 +141,12 @@ const getAllProducts = asyncHandler(async (req, res) => {
       updatedAt: product.updatedAt
     }));
 
-    // Calculate pagination metadata
+    // Pagination metadata
     const totalPages = Math.ceil(total / limitNum);
     const hasNextPage = pageNum < totalPages;
     const hasPrevPage = pageNum > 1;
-    
 
-    res.status(200).json({
+    const response = {
       success: true,
       count: transformedProducts.length,
       total,
@@ -148,23 +160,34 @@ const getAllProducts = asyncHandler(async (req, res) => {
         prevPage: hasPrevPage ? pageNum - 1 : null
       },
       filters: {
-        category: category || 'all',
-        search: search || '',
+        category: category || "all",
+        search: search || "",
         minPrice: minPrice || null,
         maxPrice: maxPrice || null,
         isAvailable: isAvailable || null,
         sort
       },
       data: transformedProducts
-    });
+    };
+
+    // Store in Redis cache (1 hour TTL)
+    try {
+      await redis.set(cacheKey, JSON.stringify(response), "EX", 3600);
+    } catch (err) {
+      console.log("Redis write error:", err.message);
+    }
+
+    res.status(200).json(response);
+
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: 'Error fetching products',
+      message: "Error fetching products",
       error: error.message
     });
   }
 });
+
 
 
 const getProductsByTag = async (req, res) => {
@@ -281,30 +304,40 @@ const getProductById = asyncHandler(async (req, res) => {
 const getProductsByCategory = asyncHandler(async (req, res) => {
   try {
     const { category } = req.params;
-    const { sort = 'name', limit = 50, page = 1 } = req.query;
+    const { sort = "name", limit = 50, page = 1 } = req.query;
 
-    // Normalize category input (lowercase, trim)
     const normalizedCategory = category.toLowerCase().trim();
-    
-    // Define valid categories and their variations
+
+    const cacheKey = `category_products:${normalizedCategory}:${JSON.stringify(req.query)}`;
+
+    // Check Redis Cache
+    try {
+      const cachedData = await redis.get(cacheKey);
+      if (cachedData) {
+        return res.status(200).json(JSON.parse(cachedData));
+      }
+    } catch (err) {
+      console.log("Redis read error:", err.message);
+    }
+
     const categoryMappings = {
-      'vegetable': ['vegetable', 'vegetables', 'veg', 'veggies'],
-      'fruit': ['fruit', 'fruits'],
-      'staple': ['staple', 'staples', 'grain', 'grains', 'cereal'],
-      'herb': ['herb', 'herbs', 'spice', 'spices'],
-      'tuber': ['tuber', 'tubers', 'root', 'roots'],
-      'other': ['other', 'others', 'misc', 'miscellaneous'],
-      'grain':['grain'],
-      'cereal':['cereal'],
-      'meat':['meat'],
-      'frozen-food':['frozen-food'],
-      'poultry':['poultry'],
-      'seafood':['seafood'],
-      'spice':['spice'],
+      vegetable: ["vegetable", "vegetables", "veg", "veggies"],
+      fruit: ["fruit", "fruits"],
+      staple: ["staple", "staples", "grain", "grains", "cereal"],
+      herb: ["herb", "herbs", "spice", "spices"],
+      tuber: ["tuber", "tubers", "root", "roots"],
+      other: ["other", "others", "misc", "miscellaneous"],
+      grain: ["grain"],
+      cereal: ["cereal"],
+      meat: ["meat"],
+      "frozen-food": ["frozen-food"],
+      poultry: ["poultry"],
+      seafood: ["seafood"],
+      spice: ["spice"]
     };
 
-    // Find the standardized category name
     let standardizedCategory = null;
+
     for (const [standard, variations] of Object.entries(categoryMappings)) {
       if (variations.includes(normalizedCategory)) {
         standardizedCategory = standard;
@@ -312,114 +345,117 @@ const getProductsByCategory = asyncHandler(async (req, res) => {
       }
     }
 
-    // If no match found, check if it's already a standard category
-    if (!standardizedCategory && Object.keys(categoryMappings).includes(normalizedCategory)) {
+    if (
+      !standardizedCategory &&
+      Object.keys(categoryMappings).includes(normalizedCategory)
+    ) {
       standardizedCategory = normalizedCategory;
     }
 
     if (!standardizedCategory) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid category',
+        message: "Invalid category",
         validCategories: Object.keys(categoryMappings),
         acceptedVariations: categoryMappings
       });
     }
 
-    // Sorting
     let sortOption = {};
     switch (sort) {
-      case 'price-asc':
+      case "price-asc":
         sortOption = { price: 1 };
         break;
-      case 'price-desc':
+      case "price-desc":
         sortOption = { price: -1 };
         break;
-      case 'stock-desc':
+      case "stock-desc":
         sortOption = { countInStock: -1 };
         break;
-      case 'newest':
+      case "newest":
         sortOption = { createdAt: -1 };
         break;
-      case 'popular':
-        sortOption = { 'reviews.rating': -1 };
+      case "popular":
+        sortOption = { "reviews.rating": -1 };
         break;
       default:
         sortOption = { name: 1 };
     }
 
-    // Pagination
     const limitValue = parseInt(limit) || 50;
     const pageValue = Math.max(parseInt(page) || 1, 1);
     const skip = (pageValue - 1) * limitValue;
 
-    // Case-insensitive category query using regex
-    const products = await Product.find({ 
-      category: { $regex: new RegExp(`^${standardizedCategory}$`, 'i') },
-      isAvailable: true 
-    })
-    .sort(sortOption)
-    .skip(skip)
-    .limit(limitValue)
-    .select('name slug image price unit countInStock description category createdAt updatedAt');
+    const categoryQuery = {
+      category: { $regex: new RegExp(`^${standardizedCategory}$`, "i") },
+      isAvailable: true
+    };
 
-    // Get total count for pagination
-    const totalProducts = await Product.countDocuments({ 
-      category: { $regex: new RegExp(`^${standardizedCategory}$`, 'i') },
-      isAvailable: true 
-    });
+    const products = await Product.find(categoryQuery)
+      .sort(sortOption)
+      .skip(skip)
+      .limit(limitValue)
+      .select(
+        "name slug image price unit countInStock description category createdAt updatedAt"
+      );
 
-    // Calculate pagination info
+    const totalProducts = await Product.countDocuments(categoryQuery);
+
     const totalPages = Math.ceil(totalProducts / limitValue);
     const hasNextPage = pageValue < totalPages;
     const hasPrevPage = pageValue > 1;
 
-    // Category statistics
-    const categoryProducts = await Product.find({ 
-      category: { $regex: new RegExp(`^${standardizedCategory}$`, 'i') },
-      isAvailable: true 
-    }).select('price countInStock');
+    const categoryProducts = await Product.find(categoryQuery).select(
+      "price countInStock"
+    );
 
     const categoryStats = {
       total: categoryProducts.length,
       inStock: categoryProducts.filter(p => p.countInStock > 0).length,
       outOfStock: categoryProducts.filter(p => p.countInStock === 0).length,
-      lowStock: categoryProducts.filter(p => p.countInStock <= 10 && p.countInStock > 0).length,
-      priceRange: categoryProducts.length > 0 ? {
-        min: Math.min(...categoryProducts.map(p => p.price)),
-        max: Math.max(...categoryProducts.map(p => p.price)),
-        avg: parseFloat((categoryProducts.reduce((sum, p) => sum + p.price, 0) / categoryProducts.length).toFixed(2))
-      } : null
+      lowStock: categoryProducts.filter(
+        p => p.countInStock <= 10 && p.countInStock > 0
+      ).length,
+      priceRange:
+        categoryProducts.length > 0
+          ? {
+              min: Math.min(...categoryProducts.map(p => p.price)),
+              max: Math.max(...categoryProducts.map(p => p.price)),
+              avg: parseFloat(
+                (
+                  categoryProducts.reduce((sum, p) => sum + p.price, 0) /
+                  categoryProducts.length
+                ).toFixed(2)
+              )
+            }
+          : null
     };
 
-    // Helper function for category display name
-    const getCategoryDisplay = (cat) => {
+    const getCategoryDisplay = cat => {
       const displayNames = {
-        'vegetable': 'Vegetables',
-        'fruit': 'Fruits',
-        'staple': 'Staples',
-        'herb': 'Herbs & Spices',
-        'tuber': 'Roots & Tubers',
-        'other': 'Other Products'
+        vegetable: "Vegetables",
+        fruit: "Fruits",
+        staple: "Staples",
+        herb: "Herbs & Spices",
+        tuber: "Roots & Tubers",
+        other: "Other Products"
       };
       return displayNames[cat] || cat.charAt(0).toUpperCase() + cat.slice(1);
     };
 
-    // Helper function for unit display
-    const getUnitDisplay = (unit) => {
+    const getUnitDisplay = unit => {
       const unitMap = {
-        'kg': 'Kilogram',
-        'g': 'Gram',
-        'lb': 'Pound',
-        'piece': 'Piece',
-        'bunch': 'Bunch',
-        'pack': 'Pack',
-        'dozen': 'Dozen'
+        kg: "Kilogram",
+        g: "Gram",
+        piece: "Piece",
+        bunch: "Bunch",
+        pack: "Pack",
+        basket: "Basket"
       };
       return unitMap[unit] || unit;
     };
 
-    res.status(200).json({
+    const response = {
       success: true,
       category: {
         id: standardizedCategory,
@@ -431,11 +467,11 @@ const getProductsByCategory = asyncHandler(async (req, res) => {
       stats: categoryStats,
       pagination: {
         currentPage: pageValue,
-        totalPages: totalPages,
-        totalProducts: totalProducts,
+        totalPages,
+        totalProducts,
         productsPerPage: limitValue,
-        hasNextPage: hasNextPage,
-        hasPrevPage: hasPrevPage,
+        hasNextPage,
+        hasPrevPage,
         nextPage: hasNextPage ? pageValue + 1 : null,
         prevPage: hasPrevPage ? pageValue - 1 : null
       },
@@ -452,22 +488,34 @@ const getProductsByCategory = asyncHandler(async (req, res) => {
         countInStock: p.countInStock,
         inStock: p.countInStock > 0,
         isLowStock: p.countInStock <= 10 && p.countInStock > 0,
-        description: p.description ? p.description.substring(0, 100) + '...' : null,
+        description: p.description
+          ? p.description.substring(0, 100) + "..."
+          : null,
         category: p.category,
         createdAt: p.createdAt,
         updatedAt: p.updatedAt
       }))
-    });
+    };
+
+    // Save to Redis (1 hour TTL)
+    try {
+      await redis.set(cacheKey, JSON.stringify(response), "EX", 3600);
+    } catch (err) {
+      console.log("Redis write error:", err.message);
+    }
+
+    res.status(200).json(response);
+
   } catch (error) {
-    console.error('Error in getProductsByCategory:', error);
+    console.error("Error in getProductsByCategory:", error);
     res.status(500).json({
       success: false,
-      message: 'Error fetching products by category',
-      error: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      message: "Error fetching products by category",
+      error: error.message
     });
   }
 });
+
 
 const createProduct = asyncHandler(async (req, res) => {
   try {
@@ -595,6 +643,15 @@ const createProduct = asyncHandler(async (req, res) => {
 
     // Create product
     const product = await Product.create(productData);
+
+    const productKeys = await redis.keys("products:*");
+    const categoryKeys = await redis.keys("category_products:*");
+
+    const keys = [...productKeys, ...categoryKeys];
+
+    if (keys.length) {
+     await redis.del(keys);
+    }
 
     res.status(201).json({
       success: true,
@@ -787,6 +844,15 @@ const updateProduct = asyncHandler(async (req, res) => {
     });
 
     await product.save();
+    const productKeys = await redis.keys("products:*");
+    const categoryKeys = await redis.keys("category_products:*");
+
+    const keys = [...productKeys, ...categoryKeys];
+
+    if (keys.length) {
+     await redis.del(keys);
+    }
+
 
     res.status(200).json({
       success: true,
@@ -858,28 +924,18 @@ const deleteProduct = asyncHandler(async (req, res) => {
       });
     }
 
-    // Check if product is used in any active packages
-    // You might want to add this check when you have Package model
-    // const packageCount = await Package.countDocuments({
-    //   $or: [
-    //     { 'defaultItems.product': productId },
-    //     { 'swapOptions.product': productId }
-    //   ]
-    // });
-    
-    // if (packageCount > 0) {
-    //   return res.status(400).json({
-    //     success: false,
-    //     message: `Cannot delete product used in ${packageCount} packages`
-    //   });
-    // }
-
-    // Soft delete by setting isAvailable to false
-    // Or hard delete if you prefer:
-    // await product.remove();
     
     product.isAvailable = false;
     await product.save();
+    const productKeys = await redis.keys("products:*");
+    const categoryKeys = await redis.keys("category_products:*");
+
+    const keys = [...productKeys, ...categoryKeys];
+
+    if (keys.length) {
+     await redis.del(keys);
+    }
+
 
     res.status(200).json({
       success: true,

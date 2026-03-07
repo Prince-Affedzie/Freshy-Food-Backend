@@ -19,6 +19,17 @@ const userActionRouter = require('./routes/cartAndFavoriteRoute')
 const paymentRoute = require('./routes/paymentRoute')
 const adminRoutes = require('./routes/adminRoutes')
 
+const redis = require("./config/redis");
+
+async function testRedis() {
+  await redis.set("FreshyFood_Factory", "FreshyFood");
+  const value = await redis.get("FreshyFood_Factory");
+
+  console.log(value);
+}
+
+
+
 
 const app  = express()
 
@@ -76,5 +87,6 @@ mongoose.connect(mongo_connection_url)
          .then(()=>{
         server.listen(process.env.PORT || 5000)
         console.log('Listening on port 5000')
+         testRedis();
          }).catch((err)=>console.log(err))
 
