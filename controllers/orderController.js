@@ -963,14 +963,6 @@ const cancelOrder = asyncHandler(async (req, res) => {
     const userId = req.user.id;
     const { reason } = req.body;
     const notificationService = req.app.get("notificationService");
-
-    if (!mongoose.Types.ObjectId.isValid(orderId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid order ID format'
-      });
-    }
-
     const order = await Order.findById(orderId);
 
     if (!order) {
@@ -1007,10 +999,6 @@ const cancelOrder = asyncHandler(async (req, res) => {
 
     // Update order
     order.status = 'Cancelled';
-    order.cancelledAt = Date.now();
-    order.cancellationReason = reason;
-    order.cancelledBy = userId;
-
     // Restore product stock
     await restoreProductStock(order.orderItems);
 
