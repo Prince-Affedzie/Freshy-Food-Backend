@@ -63,6 +63,7 @@ if (!user) {
     
     await notificationService.sendWelcomeNotification(user._id)
     await sendWelcomeEmail(user.email,user.firstName)
+    
     res.status(200).json({message:"Registration Successful",role:user.role,user:user,token:apptoken})
   } catch (error) {
     console.log(error)
@@ -98,7 +99,7 @@ const google_login = async(req,res)=>{
        
         const apptoken = jwt.sign({id:findUser._id,role:findUser.role},process.env.token,{expiresIn:"30d"})
         res.cookie("token",apptoken,{httpOnly:true,sameSite:"None",secure:true})
-        await notificationService.sendWelcomeNotification(findUser._id)
+        
         res.status(200).json({message:"Login Successful",role:findUser.role,user:findUser,token:apptoken})
 
     }catch(err){
@@ -136,6 +137,7 @@ const signUp = async(req,res)=>{
     await user.save()
      try {
       await notificationService.notifyAdminsNewUser(user);
+      await notificationService.sendWelcomeNotification(user._id)
     } catch (e) {
       console.error('Admin signup notification failed:', e);
     }
