@@ -97,8 +97,7 @@ const google_login = async(req,res)=>{
        
         const apptoken = jwt.sign({id:findUser._id,role:findUser.role},process.env.token,{expiresIn:"30d"})
         res.cookie("token",apptoken,{httpOnly:true,sameSite:"None",secure:true})
-        console.log(findUser)
-        
+        await sendWelcomeEmail(user.email,user.firstName)
         res.status(200).json({message:"Login Successful",role:findUser.role,user:findUser,token:apptoken})
 
     }catch(err){
