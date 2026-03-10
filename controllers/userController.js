@@ -142,7 +142,6 @@ const signUp = async(req,res)=>{
 
     const token = jwt.sign({id:user._id,role:user.role},process.env.token,{expiresIn:"30d"})
     res.cookie("token",token,{httpOnly:true,sameSite:"None",secure:true})
-    await sendWelcomeEmail(user.email,user.firstName)
     res.status(200).json({message:"Registration Successful",role:user.role,user:user,token:token})
 }catch(err){
     console.log(err)
