@@ -5,8 +5,8 @@ const resend = new Resend(process.env.RESEND_API_KEY);
  const sendWelcomeEmail=async(userEmail, firstName) =>{
  console.log("sending email")
  try{
-  await resend.emails.send({
-    from: "FreshyFood Factory <noreply@freshyfoodfactory.com>",
+   const response = await resend.emails.send({
+    from: "FreshyFood Factory <noreply@mail.workaflow.live>",
     to: userEmail,
     subject: "Welcome to FreshyFood Factory 🛒",
     html: `
@@ -44,7 +44,12 @@ const resend = new Resend(process.env.RESEND_API_KEY);
         </p>
       </div>
     `
-  })} catch(error){
+  })
+  console.log("Resend response:", response);
+
+
+
+} catch(error){
     console.error("Welcome email error:", error);
   }
 }
@@ -61,7 +66,7 @@ const sendOrderConfirmationEmail=async(userEmail, firstName, order) =>{
       .join("");
 
     await resend.emails.send({
-      from: "FreshyFood Factory <orders@freshyfoodfactory.com>",
+      from: "FreshyFood Factory <noreply@mail.workaflow.live>",
       to: userEmail,
       subject: `Your FreshyFood Factory Order #${order._id} is Confirmed 🛒`,
       html: `
