@@ -74,6 +74,7 @@ if (!user) {
 const google_login = async(req,res)=>{
    const {token} = req.body
    console.log("Logging In")
+  const notificationService = req.app.get("notificationService");
 
     try{
         
@@ -97,7 +98,7 @@ const google_login = async(req,res)=>{
        
         const apptoken = jwt.sign({id:findUser._id,role:findUser.role},process.env.token,{expiresIn:"30d"})
         res.cookie("token",apptoken,{httpOnly:true,sameSite:"None",secure:true})
-        await sendWelcomeEmail(findUser.email,findUser.firstName)
+        await notificationService.sendWelcomeNotification(findUser._id)
         res.status(200).json({message:"Login Successful",role:findUser.role,user:findUser,token:apptoken})
 
     }catch(err){
