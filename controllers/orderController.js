@@ -5,6 +5,7 @@ const asyncHandler = require('express-async-handler');
 const mongoose = require('mongoose');
 const axios = require('axios');
 const NotificationService = require('../services/notificationService');
+const {sendOrderConfirmationEmail} = require('../services/emailService')
 
 
 // WhatsApp Business API configuration
@@ -168,10 +169,14 @@ const createOrder = asyncHandler(async (req, res) => {
     populatedOrder
     );
 
+    await sendOrderConfirmationEmail(user.email,user.firstName,order)
+
   await notificationService.notifyAdminsNewOrder(
     populatedOrder,
     populatedOrder.user
   );
+
+  
 } catch (err) {
   console.error('Notification failure:', err);
 }
@@ -834,8 +839,7 @@ const updateOrderToDelivered = asyncHandler(async (req, res) => {
     order.isDelivered = true;
     order.deliveredAt = Date.now();
     order.status = 'Delivered';
-    //order.deliveryNotes = deliveryNotes || order.deliveryNotes;
-    //order.deliveredBy = deliveredBy;
+    
 
     const updatedOrder = await order.save();
 
@@ -855,7 +859,7 @@ const updateOrderToDelivered = asyncHandler(async (req, res) => {
         deliveredAt: formatDate(updatedOrder.deliveredAt),
         status: updatedOrder.status,
         deliveryNotes: updatedOrder.deliveryNotes,
-        deliveredBy: updatedOrder.deliveredBy
+        
       }
     });
   } catch (error) {
@@ -882,13 +886,6 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
     }
 
     const validStatuses = ['Pending', 'Processing', 'Out for Delivery', 'Delivered', 'Cancelled'];
-   /* if (!validStatuses.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid status',
-        validStatuses
-      });
-    }*/
 
     const order = await Order.findById(orderId)
       .populate('user', '_id firstName phone ');
@@ -909,27 +906,15 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
       order.isDelivered = true;
       order.deliveredAt = Date.now();
     } else if (status === 'Cancelled') {
-      // Restore product stock if cancelled
+     
       await restoreProductStock(order.orderItems);
     }
-
-    // Add status history
-    if (!order.statusHistory) {
-      order.statusHistory = [];
-    }
     
-    order.statusHistory.push({
-      status,
-      changedAt: Date.now(),
-      changedBy: req.user?.id || 'system',
-      notes: notes || `Status changed from ${oldStatus} to ${status}`
-    });
-
     const updatedOrder = await order.save();
 
    
     try {
-      await notifyCustomerOrderStatusUpdated(updatedOrder, oldStatus);
+      await notificationService.notifyCustomerOrderStatusUpdated(updatedOrder, oldStatus);
     } catch (notificationError) {
       console.error('Status notification failed:', notificationError);
     }
@@ -937,14 +922,6 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
     res.status(200).json({
       success: true,
       message: `Order status updated to ${status}`,
-      data: {
-        id: updatedOrder._id,
-        status: updatedOrder.status,
-        oldStatus,
-        isDelivered: updatedOrder.isDelivered,
-        deliveredAt: formatDate(updatedOrder.deliveredAt),
-        updatedAt: formatDate(updatedOrder.updatedAt)
-      }
     });
   } catch (error) {
     console.log(error)
