@@ -10,40 +10,27 @@ const resend = new Resend(process.env.RESEND_API_KEY);
     to: userEmail,
     subject: "Welcome to FreshyFood Factory 🛒",
     html: `
-      <div style="font-family: Arial, sans-serif; line-height:1.6;">
-        <h2>Hello ${firstName},</h2>
+<p>Hello ${firstName},</p>
 
-        <p>Welcome to <strong>FreshyFood Factory</strong>! 🎉</p>
+<p>Welcome to FreshyFood Factory 🎉</p>
 
-        <p>We're excited to have you join our community. 
-        Fresh groceries, healthy food items, and everyday kitchen essentials 
-        are now just a few clicks away.</p>
+<p>We're excited to have you. You can now order fresh groceries and kitchen essentials easily.</p>
 
-        <p>With FreshyFood Factory you can:</p>
+<p>If you haven't explored the store yet, you can start here:</p>
 
-        <ul>
-          <li>🥦 Shop fresh groceries easily</li>
-          <li>🚚 Get convenient delivery to your doorstep</li>
-          <li>🛒 Enjoy affordable and quality food items</li>
-        </ul>
+<p>
+<a href="https://play.google.com/store/apps/details?id=com.freshyfood.factory">
+Download the FreshyFood app
+</a>
+</p>
 
-        <p>Start exploring our store and get your kitchen stocked with fresh goodness.</p>
+<p>Thanks for joining us.</p>
 
-        <p>
-          <a href="https://play.google.com/store/apps/details?id=com.freshyfood.factory"
-            style="background:#2f855a;color:white;padding:10px 18px;text-decoration:none;border-radius:6px;">
-            Start Shopping
-          </a>
-        </p>
-
-        <p>Thank you for choosing us to be part of your daily kitchen needs.</p>
-
-        <p>
-          Warm regards,<br>
-          <strong>The FreshyFood Factory Team</strong>
-        </p>
-      </div>
-    `
+<p>
+Prince <br>
+FreshyFood Factory
+</p>
+`
   })
   console.log("Resend response:", response);
 
