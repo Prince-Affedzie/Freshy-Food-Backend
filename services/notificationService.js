@@ -114,6 +114,15 @@ async notifyAdminsNewUser(user) {
     });
   }
 
+
+  async sendWelcomeNotification(userId) {
+  return this.sendNotification({
+    userId,
+    title: "🎉 Welcome to FreshyFood Factory",
+    message: "Your kitchen just got easier. Start ordering fresh groceries and essentials anytime!",
+  });
+}
+
   
   async notifyAdminsNewOrder(order, customer) {
     const admins = await User.find({  role: "admin" }).select('_id role');

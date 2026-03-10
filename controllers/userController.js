@@ -60,8 +60,8 @@ if (!user) {
 
     const apptoken = jwt.sign({id:user._id,role:user.role},process.env.token,{expiresIn:"30d"})
     res.cookie("token",apptoken,{httpOnly:true,sameSite:"None",secure:true})
-    //processEvent("NEW_USER",user);
-    //await notificationService.sendWelcomeNotification(user._id)
+    
+    await notificationService.sendWelcomeNotification(user._id)
     await sendWelcomeEmail(user.email,user.firstName)
     res.status(200).json({message:"Registration Successful",role:user.role,user:user,token:apptoken})
   } catch (error) {
