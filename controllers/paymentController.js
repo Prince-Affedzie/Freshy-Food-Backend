@@ -18,7 +18,7 @@ const initializePayment = async (req, res) => {
 const verifyPayment = async (req, res) => {
   try {
      const { id } = req.user;
-     const { reference } = req.params;
+     const reference  = req.params;
      const { amount } = req.body;
 
     const verifyRes = await axios.get(

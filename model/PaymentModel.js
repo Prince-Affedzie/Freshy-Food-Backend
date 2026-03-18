@@ -3,10 +3,6 @@ const Schema = mongoose.Schema;
 
 const paymentSchema = new Schema(
   {
-    orderId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Order",
-    },
     user: {
       type: mongoose.Schema.Types.ObjectId, 
       ref: "User",
