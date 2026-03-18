@@ -18,8 +18,17 @@ const initializePayment = async (req, res) => {
 const verifyPayment = async (req, res) => {
   try {
      const { id } = req.user;
-     const reference  = req.params;
+     const {reference}  = req.params;
      const { amount } = req.body;
+     if (!reference) {
+      return res.status(400).json({ message: "Missing reference" });
+    }
+
+    const existing = await Payment.findOne({ transactionRef: reference });
+
+   if (existing) {
+    return res.status(200).json({ payment: existing });
+    }
 
     const verifyRes = await axios.get(
       `https://api.paystack.co/transaction/verify/${reference}`,
@@ -31,6 +40,7 @@ const verifyPayment = async (req, res) => {
     );
 
     const data = verifyRes.data.data;
+    const verifiedAmount = data.amount / 100;
     
     let payment
 
@@ -38,7 +48,7 @@ const verifyPayment = async (req, res) => {
       
     payment = await Payment.create({
       user: id,
-      amount,
+      amount:verifiedAmount,
       transactionRef: reference,
       status: 'paid',
       paymentMethod: data.channel,
