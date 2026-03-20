@@ -54,8 +54,9 @@ const generateOrderSummary = (order) => {
 
 
 const createOrder = asyncHandler(async (req, res) => {
-  const {id} = req.user
+  const { id } = req.user;
   const notificationService = req.app.get("notificationService");
+
   try {
     const {
       paymentId,
@@ -64,15 +65,9 @@ const createOrder = asyncHandler(async (req, res) => {
       paymentMethod,
       deliverySchedule,
       deliveryNote,
-      package: packageInfo,
     } = req.body;
 
-  
-    let userId;
-   
-    let user = await User.findById(id);
-
-    userId = user._id;
+    const user = await User.findById(id);
 
     if (!orderItems || orderItems.length === 0) {
       return res.status(400).json({ success: false, message: 'No order items' });
@@ -81,17 +76,27 @@ const createOrder = asyncHandler(async (req, res) => {
     if (!shippingAddress?.address || !shippingAddress?.city || !shippingAddress?.phone) {
       return res.status(400).json({ success: false, message: 'Incomplete shipping address' });
     }
-    // Validate products & calculate price
+
     const items = [];
     let itemsPrice = 0;
     let outOfStockItems = [];
 
-    for (const item of orderItems) {
-      const product = await Product.findById(item.productId || item.product);
+    // Parallel product fetching (faster)
+    const products = await Promise.all(
+      orderItems.map(item =>
+        Product.findById(item.productId || item.product)
+      )
+    );
+
+    for (let i = 0; i < orderItems.length; i++) {
+      const item = orderItems[i];
+      const product = products[i];
+
       if (!product) {
         return res.status(400).json({ success: false, message: `Product not found: ${item.name}` });
       }
-      if (!product.isAvailable ) {
+
+      if (!product.isAvailable) {
         outOfStockItems.push({
           name: product.name,
           requested: item.quantity,
@@ -107,6 +112,7 @@ const createOrder = asyncHandler(async (req, res) => {
         price: product.price,
         product: product._id
       });
+
       itemsPrice += product.price * item.quantity;
     }
 
@@ -121,76 +127,83 @@ const createOrder = asyncHandler(async (req, res) => {
     const deliveryFee = calculateDeliveryFee(itemsPrice, shippingAddress.city);
     const totalPrice = itemsPrice + deliveryFee;
 
-    // Create order
-    const order = new Order({
-      paymentId:paymentId,
-      user: userId,
+    // CREATE ORDER FAST
+    const createdOrder = await Order.create({
+      paymentId,
+      user: user._id,
       orderItems: items,
       shippingAddress: {
         ...shippingAddress,
         region: shippingAddress.region || ''
       },
-      deliverySchedule: {
-        preferredDay: deliverySchedule.preferredDay,
-        preferredTime: deliverySchedule.preferredTime
-      },
+      deliverySchedule,
       deliveryNote,
       itemsPrice,
       deliveryFee,
-      isPaid:true,
       totalPrice,
+      isPaid: true,
       paymentMethod,
-      status:'Processing',
-      wasGuestCheckout: !req.user // mark if converted from guest
+      status: 'Processing'
     });
 
-    const createdOrder = await order.save();
-
-    // Decrease stock
-    for (const item of orderItems) {
-      await Product.findByIdAndUpdate(
-        item.productId || item.product,
-        { $inc: { countInStock: -item.quantity } }
-      );
-    }
-
-    // Populate for notifications
-    const populatedOrder = await Order.findById(createdOrder._id)
-      .populate('user', '_id firstName lastName email phone')
-      .populate('orderItems.product', 'name');
-
-    user.cartItems = []
-    user.orders.push({ orderId:order._id})
-    await user.save()
-
-   try {
-   await notificationService.notifyCustomerOrderPlaced(
-    populatedOrder.user,
-    populatedOrder
-    );
-
-    await sendOrderConfirmationEmail(user.email,user.firstName,order)
-
-  await notificationService.notifyAdminsNewOrder(
-    populatedOrder,
-    populatedOrder.user
-  );
-
-  
-} catch (err) {
-  console.error('Notification failure:', err);
-}
-
+    // SEND RESPONSE IMMEDIATELY
     res.status(200).json({
       success: true,
-      message: 'Order created successfully',
+      message: 'Order placed successfully',
       data: {
         id: createdOrder._id,
         orderNumber: createdOrder._id.toString().slice(-8).toUpperCase(),
         totalPrice: formatPrice(createdOrder.totalPrice),
         status: createdOrder.status,
-        deliveryDate: formatDate(createdOrder.createdAt), // or use preferred day
-        wasGuestCheckout: createdOrder.wasGuestCheckout
+        deliveryDate: formatDate(createdOrder.createdAt)
+      }
+    });
+
+    // ============================
+    //  BACKGROUND TASKS (NON-BLOCKING)
+    // ============================
+
+    setImmediate(async () => {
+      try {
+        // Decrease stock (parallel)
+        await Promise.all(
+          orderItems.map(item =>
+            Product.findByIdAndUpdate(
+              item.productId || item.product,
+              { $inc: { countInStock: -item.quantity } }
+            )
+          )
+        );
+
+        // Update user
+        user.cartItems = [];
+        user.orders.push({ orderId: createdOrder._id });
+        await user.save();
+
+        // Populate order for notifications
+        const populatedOrder = await Order.findById(createdOrder._id)
+          .populate('user', '_id firstName lastName email phone')
+          .populate('orderItems.product', 'name');
+
+        // Notifications + email (parallel)
+        await Promise.all([
+          notificationService.notifyCustomerOrderPlaced(
+            populatedOrder.user,
+            populatedOrder
+          ),
+          sendOrderConfirmationEmail(
+            user.email,
+            user.firstName,
+            createdOrder
+          ),
+          notificationService.notifyAdminsNewOrder(
+            populatedOrder,
+            populatedOrder.user
+          )
+        ]);
+
+      } catch (err) {
+        console.error("Background task error:", err);
       }
     });
 
@@ -1132,25 +1145,17 @@ const calculateDeliveryFee = (itemsPrice, city) => {
   // Base delivery fee
   let fee = 0;
   
-  // Free delivery for orders above certain amount
-  if (itemsPrice > 100) {
-    return 0;
-  }
-  
   // Different fees based on city/zone
   const cityFees = {
-    'accra': 5,
-    'kumasi': 7,
-    'tema': 6,
-    'takoradi': 8,
-    'default': 10
+    'accra': 25,
+    'default': 25
   };
   
   fee = cityFees[city.toLowerCase()] || cityFees.default;
   
   // Minimum order fee
   if (itemsPrice < 50) {
-    fee += 2;
+    fee += 10;
   }
   
   return fee;
