@@ -124,8 +124,8 @@ const createOrder = asyncHandler(async (req, res) => {
       });
     }
 
-    const deliveryFee = calculateDeliveryFee(itemsPrice, shippingAddress.city);
-    const totalPrice = itemsPrice + deliveryFee;
+    
+    const totalPrice = itemsPrice
 
     // CREATE ORDER FAST
     const createdOrder = await Order.create({
