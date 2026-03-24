@@ -18,6 +18,7 @@ const userRoute = require('./routes/userRoute')
 const userActionRouter = require('./routes/cartAndFavoriteRoute')
 const paymentRoute = require('./routes/paymentRoute')
 const adminRoutes = require('./routes/adminRoutes')
+const authRouter = require('./routes/authRoute')
 
 const redis = require("./config/redis");
 
@@ -76,6 +77,7 @@ app.use('/api',userRoute)
 app.use('/api',userActionRouter)
 app.use('/api',paymentRoute)
 app.use('/api',adminRoutes)
+app.use('/api',authRouter)
 app.set('notificationService', notificationService);
 
 
