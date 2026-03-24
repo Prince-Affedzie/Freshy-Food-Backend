@@ -6,7 +6,8 @@ const mongoose = require('mongoose');
 const axios = require('axios');
 const NotificationService = require('../services/notificationService');
 const {sendOrderConfirmationEmail} = require('../services/emailService')
-
+const {sendSMS} = require('../services/smsService');
+const {buildOrderSMS} = require('../Utils/smsOrderComfirmationTemp')
 
 // WhatsApp Business API configuration
 const WHATSAPP_API_URL = process.env.WHATSAPP_API_URL;
@@ -139,7 +140,6 @@ const createOrder = asyncHandler(async (req, res) => {
       deliverySchedule,
       deliveryNote,
       itemsPrice,
-      deliveryFee,
       totalPrice,
       isPaid: true,
       paymentMethod,
@@ -185,17 +185,25 @@ const createOrder = asyncHandler(async (req, res) => {
           .populate('user', '_id firstName lastName email phone')
           .populate('orderItems.product', 'name');
 
+
+          const smsMessage = buildOrderSMS(
+           populatedOrder.user,
+           populatedOrder
+         );
         // Notifications + email (parallel)
         await Promise.all([
           notificationService.notifyCustomerOrderPlaced(
             populatedOrder.user,
             populatedOrder
           ),
+          sendSMS(populatedOrder.shippingAddress.phone, smsMessage),
+
           sendOrderConfirmationEmail(
             user.email,
             user.firstName,
             createdOrder
           ),
+
           notificationService.notifyAdminsNewOrder(
             populatedOrder,
             populatedOrder.user
