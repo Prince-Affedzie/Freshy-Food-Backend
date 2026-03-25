@@ -197,7 +197,7 @@ const getProductsByTag = async (req, res) => {
     const products = await Product.find({
       tags: tag,
       isAvailable: true
-    });
+    }).sort({createdAt:-1});
 
     res.status(200).json({
       success: true,
