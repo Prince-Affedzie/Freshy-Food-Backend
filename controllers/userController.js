@@ -1,11 +1,62 @@
 const User = require('../model/User')
 const jwt = require("jsonwebtoken")
 const bcrypt = require("bcryptjs")
+const admin = require('firebase-admin');
 const { OAuth2Client } = require('google-auth-library');
 const {NotificationModel}= require('../model/NotificationModel')
 const {sendWelcomeEmail} = require('../services/emailService')
 
 const googleclient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const AppleAuth = require('apple-signin-auth');
+
+
+const appleSignUpOrLogin = async (req, res) => {
+  const { token,firstName, lastName, } = req.body;
+  try {
+
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    const { uid, email } = decodedToken;
+
+    // 2. Check if user already exists by appleId
+    let user = await User.findOne({ appleId: uid });
+
+    if (user) {
+       const apptoken = jwt.sign({id:user._id,role:user.role},process.env.token,{expiresIn:"30d"});
+       res.cookie("token",apptoken,{httpOnly:true,sameSite:"None",secure:true})
+       res.status(200).json({message:"Login Successful",role:user.role,user:user,token:apptoken});
+    }
+
+    if (!firstName) {
+       return res.status(400).json({ 
+         success: false, 
+         message: 'Registration data missing. Please try again or use another method.' 
+       });
+    }
+
+    // Create the new user
+    user = new User({
+      firstName,
+      lastName: lastName || '',
+      email: email, 
+      appleId: uid,
+      role: 'customer',
+      isAdmin: false
+    });
+
+    await user.save();
+
+    // Generate app-specific JWT
+    const apptoken = jwt.sign({id:user._id,role:user.role},process.env.token,{expiresIn:"30d"})
+    res.cookie("token",apptoken,{httpOnly:true,sameSite:"None",secure:true})
+
+    res.status(200).json({message:"Registration Successful",role:user.role,user:user,token:apptoken});
+
+  } catch (error) {
+    console.error('Apple Auth Controller Error:', error);
+    res.status(500).json({ success: false, message: 'Server error during Apple authentication' });
+  }
+};
+
 
 const signUpByGoogle = async (req, res) => {
   const { token} = req.body;
@@ -343,8 +394,8 @@ const getNotifications = async(req,res)=>{
 
 
 
-module.exports = {signUp,login,logout,updateUser,deleteAccount,markNotificationAsRead,signUpByGoogle,google_login,
-    getNotifications,deleteBulkNotification,updatePushToken,deleteNotification,createNotification}
+module.exports = {signUp,login,logout,updateUser,deleteAccount,markNotificationAsRead,signUpByGoogle,google_login,appleSignUpOrLogin,
+    getNotifications,deleteBulkNotification,updatePushToken,deleteNotification,createNotification,}
 
 
 

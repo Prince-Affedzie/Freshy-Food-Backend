@@ -10,6 +10,7 @@ const userSchema = new mongoose.Schema({
   lowercase: true, 
   trim: true // Recommended to prevent " user@email.com" issues
 },
+appleId: { type: String},
  password: { type: String,default:null, }, 
  phone: {
   type: String,
