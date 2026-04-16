@@ -11,7 +11,9 @@ require('dotenv').config()
 const NotificationService = require('./services/notificationService');
 const {authenticateSocketConnection} = require('./Validators/authenticateSocketConnection')
 const Product = require('./model/Product');
-const serviceAccount = require('./config/serviceAccountKey.json');
+const serviceAccount = process.env.FIREBASE_CONFIG 
+  ? JSON.parse(process.env.FIREBASE_CONFIG) 
+  : require('./config/serviceAccountKey.json');
 
 const packagerouter = require('./routes/packageRoute')
 const productrouter = require('./routes/productRoute')
