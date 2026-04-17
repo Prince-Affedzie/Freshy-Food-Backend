@@ -11,14 +11,18 @@ const AppleAuth = require('apple-signin-auth');
 
 
 const appleSignUpOrLogin = async (req, res) => {
-  const { token,firstName, lastName, } = req.body;
+  const {appleUserId,email, token,firstName, lastName, } = req.body;
   try {
 
-    const decodedToken = await admin.auth().verifyIdToken(token);
-    const { uid, email } = decodedToken;
+   // const decodedToken = await admin.auth().verifyIdToken(token);
+    //const { uid, email } = decodedToken;
 
     // 2. Check if user already exists by appleId
-    let user = await User.findOne({ appleId: uid });
+    if (!appleUserId) {
+      return res.status(400).json({ success: false, message: 'Apple ID is required' });
+    }
+
+    let user = await User.findOne({ appleId: appleUserId });
 
     if (user) {
        const apptoken = jwt.sign({id:user._id,role:user.role},process.env.token,{expiresIn:"30d"});
@@ -38,7 +42,7 @@ const appleSignUpOrLogin = async (req, res) => {
       firstName,
       lastName: lastName || '',
       email: email, 
-      appleId: uid,
+      appleId: appleUserId,
       role: 'customer',
       isAdmin: false
     });
@@ -49,7 +53,7 @@ const appleSignUpOrLogin = async (req, res) => {
     const apptoken = jwt.sign({id:user._id,role:user.role},process.env.token,{expiresIn:"30d"})
     res.cookie("token",apptoken,{httpOnly:true,sameSite:"None",secure:true})
 
-    res.status(200).json({message:"Registration Successful",role:user.role,user:user,token:apptoken});
+    res.status(200).json({success:true,message:"Registration Successful",role:user.role,user:user,token:apptoken});
 
   } catch (error) {
     console.error('Apple Auth Controller Error:', error);
