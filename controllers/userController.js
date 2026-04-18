@@ -27,7 +27,7 @@ const appleSignUpOrLogin = async (req, res) => {
     if (user) {
        const apptoken = jwt.sign({id:user._id,role:user.role},process.env.token,{expiresIn:"30d"});
        res.cookie("token",apptoken,{httpOnly:true,sameSite:"None",secure:true})
-       res.status(200).json({message:"Login Successful",role:user.role,user:user,token:apptoken});
+       return res.status(200).json({message:"Login Successful",role:user.role,user:user,token:apptoken});
     }
 
     /*if (!firstName) {
@@ -39,7 +39,7 @@ const appleSignUpOrLogin = async (req, res) => {
 
     // Create the new user
     user = new User({
-      firstName:'',
+      firstName:firstName || '',
       lastName: lastName || '',
       email: email, 
       appleId: appleUserId,
@@ -48,16 +48,14 @@ const appleSignUpOrLogin = async (req, res) => {
     });
 
     await user.save();
-
-    // Generate app-specific JWT
     const apptoken = jwt.sign({id:user._id,role:user.role},process.env.token,{expiresIn:"30d"})
     res.cookie("token",apptoken,{httpOnly:true,sameSite:"None",secure:true})
 
-    res.status(200).json({success:true,message:"Registration Successful",role:user.role,user:user,token:apptoken});
+    return res.status(200).json({success:true,message:"Registration Successful",role:user.role,user:user,token:apptoken});
 
   } catch (error) {
     console.error('Apple Auth Controller Error:', error);
-    res.status(500).json({ success: false, message: 'Server error during Apple authentication' });
+    return res.status(500).json({ success: false, message: 'Server error during Apple authentication' });
   }
 };
 
