@@ -30,13 +30,7 @@ const appleSignUpOrLogin = async (req, res) => {
        return res.status(200).json({message:"Login Successful",role:user.role,user:user,token:apptoken});
     }
 
-    /*if (!firstName) {
-       return res.status(400).json({ 
-         success: false, 
-         message: 'Registration data missing. Please try again or use another method.' 
-       });
-    }*/
-
+    
     // Create the new user
     user = new User({
       firstName:firstName || '',
