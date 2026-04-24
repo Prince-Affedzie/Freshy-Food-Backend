@@ -4,13 +4,53 @@ const axios = require('axios');
 
 
 const initializePayment = async (req, res) => {
-  const { v4: uuidv4 } = await import('uuid');
   try {
+    const { email, amount, phone } = req.body;
+    const { v4: uuidv4 } = await import('uuid');
+    console.log(req.body)
+
+    if (!email || !amount) {
+      return res.status(400).json({ message: "Email and amount are required" });
+    }
+
     const transactionRef = uuidv4();
-    res.status(200).json({ reference: transactionRef });
+
+    // 🔥 IMPORTANT: Paystack expects amount in kobo/pesewas
+    const amountInPesewas = Math.round(Number(amount) * 100);
+
+    const paystackRes = await axios.post(
+      "https://api.paystack.co/transaction/initialize",
+      {
+        email,
+        amount: amountInPesewas,
+        reference: transactionRef,
+        currency: "GHS",
+        metadata: {
+          phone,
+        },
+
+        // ✅ Optional but recommended
+       // callback_url: "https://yourdomain.com/payment-success",
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    const data = paystackRes.data.data;
+
+    res.status(200).json({
+      authorization_url: data.authorization_url,
+      reference: data.reference,
+      access_code: data.access_code,
+    });
+
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Internal Server Error' });
+    console.error(err.response?.data || err);
+    res.status(500).json({ message: "Failed to initialize payment" });
   }
 };
 
