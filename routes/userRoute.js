@@ -1,5 +1,5 @@
 const {signUp,login,logout,updateUser,deleteAccount,
-     markNotificationAsRead,signUpByGoogle,google_login,
+     markNotificationAsRead,signUpByGoogle,google_login,vendor_login,
     getNotifications,deleteBulkNotification,updatePushToken,deleteNotification,createNotification,appleSignUpOrLogin,
 } = require('../controllers/userController')
 const express = require('express')
@@ -10,6 +10,7 @@ const {auth} = require('../middleware/auth');
 userRoute.post('/register/account',signUp)
 userRoute.post('/apple/authenticate',appleSignUpOrLogin)
 userRoute.post('/login',login)
+userRoute.post('/vendor/login',vendor_login)
 userRoute.post('/google_sign_up',signUpByGoogle)
 userRoute.post('/google_login',google_login)
 userRoute.post('/logout',auth,logout)

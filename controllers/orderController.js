@@ -8,6 +8,7 @@ const NotificationService = require('../services/notificationService');
 const {sendOrderConfirmationEmail} = require('../services/emailService')
 const {sendSMS} = require('../services/smsService');
 const {buildOrderSMS} = require('../Utils/smsOrderComfirmationTemp')
+const Vendor = require('../model/Vendor');
 
 // WhatsApp Business API configuration
 const WHATSAPP_API_URL = process.env.WHATSAPP_API_URL;
@@ -54,176 +55,153 @@ const generateOrderSummary = (order) => {
 };
 
 
+
+// Helper: Validate items and fetch full product details with Vendor info
+// Helper: Validate items and fetch full product details with Vendor info
+const validateAndFetchItems = async (orderItems) => {
+  const products = await Promise.all(
+    orderItems.map(item => Product.findById(item.productId || item.product).populate('vendor'))
+  );
+
+  let itemsPrice = 0;
+  const processedItems = [];
+  const outOfStock = [];
+
+  products.forEach((product, i) => {
+    const item = orderItems[i];
+    if (!product) throw new Error(`Product not found: ${item.name}`);
+    
+    if (!product.isAvailable) {
+      outOfStock.push({ name: product.name, requested: item.quantity });
+    }
+
+    processedItems.push({
+      name: product.name,
+      quantity: item.quantity,
+      price: product.price,
+      product: product._id,
+      vendor: product.vendor?._id,
+      image: product.image || '',
+      unit: item.unit || product.unit || 'unit' // FIXED: Ensuring unit is preserved
+    });
+
+    itemsPrice += product.price * item.quantity;
+  });
+
+  return { processedItems, itemsPrice, outOfStock };
+};
+
+// Helper: Group items by Vendor for Sub-Orders
+const groupItemsByVendor = (items) => {
+  return items.reduce((acc, item) => {
+    const vendorId = item.vendor.toString();
+    if (!acc[vendorId]) {
+      acc[vendorId] = [];
+    }
+    acc[vendorId].push(item);
+    return acc;
+  }, {});
+};
+
+
+const handleOrderPostProcessing = async (order, userId, notificationService) => {
+  // 1. Update Inventory and User Data
+  await Promise.all([
+    ...order.orderItems.map(item => 
+      Product.findByIdAndUpdate(item.product, { $inc: { countInStock: -item.quantity } })
+    ),
+    User.findByIdAndUpdate(userId, { $set: { cartItems: [] }, $push: { orders: { orderId: order._id } } })
+  ]);
+
+  // 2. Notify Individual Vendors
+  // This ensures Vendor A doesn't see Vendor B's items
+  await Promise.all(order.subOrders.map(async (sub) => {
+    const vendor = await Vendor.findById(sub.vendor).populate('user');
+    if (vendor?.user?.phone) {
+      const message = `New Order #${order._id.toString().slice(-5)}: You have ${sub.items.length} items to prepare for FreshyFood.`;
+      await sendSMS(vendor.user.phone, message);
+      await notificationService.notifyVendorNewSubOrder(vendor.user, sub);
+    }
+  }));
+
+  // 3. Global Admin Notification
+  await notificationService.notifyAdminsNewOrder(order);
+};
+
+
 const createOrder = asyncHandler(async (req, res) => {
   const { id } = req.user;
-  const notificationService = req.app.get("notificationService");
+  const { 
+    paymentId, 
+    orderItems, 
+    shippingAddress, 
+    paymentMethod, 
+    deliverySchedule, // preferredDay and preferredTime are inside here
+    deliveryNote 
+  } = req.body;
 
   try {
-    const {
-      paymentId,
-      orderItems,
-      shippingAddress,
-      paymentMethod,
-      deliverySchedule,
-      deliveryNote,
-    } = req.body;
-
-    const user = await User.findById(id);
-
-    if (!orderItems || orderItems.length === 0) {
-      return res.status(400).json({ success: false, message: 'No order items' });
-    }
-
-    if (!shippingAddress?.address || !shippingAddress?.city || !shippingAddress?.phone) {
-      return res.status(400).json({ success: false, message: 'Incomplete shipping address' });
-    }
-
-    const items = [];
-    let itemsPrice = 0;
-    let outOfStockItems = [];
-
-    // Parallel product fetching (faster)
-    const products = await Promise.all(
-      orderItems.map(item =>
-        Product.findById(item.productId || item.product)
-      )
-    );
-
-    for (let i = 0; i < orderItems.length; i++) {
-      const item = orderItems[i];
-      const product = products[i];
-
-      if (!product) {
-        return res.status(400).json({ success: false, message: `Product not found: ${item.name}` });
-      }
-
-      if (!product.isAvailable) {
-        outOfStockItems.push({
-          name: product.name,
-          requested: item.quantity,
-          available: product.countInStock
-        });
-      }
-
-      items.push({
-        name: product.name,
-        quantity: item.quantity,
-        unit: item.unit || 'unit',
-        image: product.image || '',
-        price: product.price,
-        product: product._id
-      });
-
-      itemsPrice += product.price * item.quantity;
-    }
-
-    if (outOfStockItems.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Some items are out of stock',
-        outOfStockItems
-      });
-    }
-
+    // 1. Validation Logic
+    if (!orderItems?.length) return res.status(400).json({ message: 'No items' });
     
-    const totalPrice = itemsPrice
+    const { processedItems, itemsPrice, outOfStock } = await validateAndFetchItems(orderItems);
+    
+    if (outOfStock.length > 0) {
+      return res.status(400).json({ success: false, outOfStockItems: outOfStock });
+    }
 
-    // CREATE ORDER FAST
-    const createdOrder = await Order.create({
-      paymentId,
-      user: user._id,
-      orderItems: items,
+    // 2. Group items into Sub-Order format
+    const grouped = groupItemsByVendor(processedItems);
+    const subOrders = Object.keys(grouped).map(vendorId => ({
+      vendor: vendorId,
+      items: grouped[vendorId],
+      vendorStatus: 'Notified'
+    }));
+
+    // 3. Create the Master Order
+    const masterOrder = await Order.create({
+      user: id,
+      orderItems: processedItems,
+      subOrders,
+      itemsPrice,
+      totalPrice: itemsPrice,
       shippingAddress: {
         ...shippingAddress,
         region: shippingAddress.region || ''
       },
-      deliverySchedule,
+      deliverySchedule, // FIXED: Passes the full object (preferredDay/Time)
       deliveryNote,
-      itemsPrice,
-      totalPrice,
-      isPaid: true,
+      paymentId,
       paymentMethod,
-      status: 'Processing'
+      status: 'Processing',
+      isPaid: true
     });
 
-    // SEND RESPONSE IMMEDIATELY
+    // 4. Response Immediately
     res.status(200).json({
       success: true,
-      message: 'Order placed successfully',
-      data: {
-        id: createdOrder._id,
-        orderNumber: createdOrder._id.toString().slice(-8).toUpperCase(),
-        totalPrice: formatPrice(createdOrder.totalPrice),
-        status: createdOrder.status,
-        deliveryDate: formatDate(createdOrder.createdAt)
+      data: { 
+        id: masterOrder._id, 
+        orderNumber: masterOrder._id.toString().slice(-8).toUpperCase(),
+        totalPrice: masterOrder.totalPrice 
       }
     });
 
-    // ============================
-    //  BACKGROUND TASKS (NON-BLOCKING)
-    // ============================
-
+    // 5. BACKGROUND TASKS
     setImmediate(async () => {
       try {
-        // Decrease stock (parallel)
-        await Promise.all(
-          orderItems.map(item =>
-            Product.findByIdAndUpdate(
-              item.productId || item.product,
-              { $inc: { countInStock: -item.quantity } }
-            )
-          )
-        );
-
-        // Update user
-        user.cartItems = [];
-        user.orders.push({ orderId: createdOrder._id });
-        await user.save();
-
-        // Populate order for notifications
-        const populatedOrder = await Order.findById(createdOrder._id)
-          .populate('user', '_id firstName lastName email phone')
-          .populate('orderItems.product', 'name');
-
-
-          const smsMessage = buildOrderSMS(
-           populatedOrder.user,
-           populatedOrder
-         );
-        // Notifications + email (parallel)
-        await Promise.all([
-          notificationService.notifyCustomerOrderPlaced(
-            populatedOrder.user,
-            populatedOrder
-          ),
-          sendSMS(populatedOrder.shippingAddress.phone, smsMessage),
-
-          sendOrderConfirmationEmail(
-            user.email,
-            user.firstName,
-            createdOrder
-          ),
-
-          notificationService.notifyAdminsNewOrder(
-            populatedOrder,
-            populatedOrder.user
-          )
-        ]);
-
+        await handleOrderPostProcessing(masterOrder, id, req.app.get("notificationService"));
       } catch (err) {
-        console.error("Background task error:", err);
+        console.error("Background processing failed:", err);
       }
     });
 
   } catch (error) {
-    console.error(error);
-    res.status(500).json({
-      success: false,
-      message: 'Error creating order',
-      error: error.message
-    });
+    console.error("Order Creation Error:", error);
+    res.status(500).json({ success: false, message: 'Error creating order', error: error.message });
   }
 });
+
 
 
 const getOrderById = asyncHandler(async (req, res) => {

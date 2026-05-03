@@ -41,7 +41,12 @@ const productSchema = new mongoose.Schema({
   
   countInStock: { type: Number, required: true, default: 0 },
   isAvailable: { type: Boolean, default: true },
-  description: { type: String }
+  description: { type: String },
+  vendor:{
+    type:mongoose.Schema.Types.ObjectId,
+    ref:"Vendor"
+
+  }
 }, {
   timestamps: true
 });

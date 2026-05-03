@@ -18,7 +18,7 @@ appleId: { type: String},
   sparse: true 
  },
  isAdmin: { type: Boolean, default: false, required: true },
- role:{type:String ,default:'customer',enum:['customer','admin']},
+ role:{type:String ,default:'customer',enum:['customer','admin','vendor']},
  address: { type: String, default: '' },
  city: { type: String, default: '' },
  nearestLandmark: { type: String, default: '' } ,

@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const slugify = require('slugify');
 const cloudinary = require('../Utils/cloudinaryConfig')
 const redis = require("../config/redis");
+const Vendor = require('../model/Vendor');
 
 // Helper function to generate slug
 const generateSlug = (name) => {
@@ -519,6 +520,8 @@ const getProductsByCategory = asyncHandler(async (req, res) => {
 
 const createProduct = asyncHandler(async (req, res) => {
   try {
+    console.log("Receiving Request")
+    console.log(req.body)
     const {
       name,
       category,
@@ -627,6 +630,7 @@ const createProduct = asyncHandler(async (req, res) => {
     }
 
     // Create product data object (only fields from schema)
+    const vendor =  await Vendor.findOne({user:req.user.id})
     const productData = {
       name,
       slug: finalSlug,
@@ -638,11 +642,14 @@ const createProduct = asyncHandler(async (req, res) => {
       tags:tags,
       countInStock: stockCount,
       description: description || '',
-      isAvailable: isAvailable !== undefined ? (isAvailable === 'true' || isAvailable === true) : true
+      isAvailable: isAvailable !== undefined ? (isAvailable === 'true' || isAvailable === true) : true,
+      vendor:vendor._id,
     };
 
     // Create product
     const product = await Product.create(productData);
+    vendor.products.push(product)
+    await vendor.save()
 
     const productKeys = await redis.keys("products:*");
     const categoryKeys = await redis.keys("category_products:*");
@@ -701,6 +708,7 @@ const createProduct = asyncHandler(async (req, res) => {
 });
 
 const updateProduct = asyncHandler(async (req, res) => {
+  console.log(req.body)
   try {
     const productId = req.params.id;
     const updates = req.body;

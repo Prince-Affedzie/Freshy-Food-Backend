@@ -1,6 +1,7 @@
 const express = require('express');
 const {upload} = require('../Utils/mutlerConfig')
 const productrouter = express.Router();
+const {auth} = require('../middleware/auth');
 const {
   getAllProducts,
   getProductById,
@@ -27,7 +28,7 @@ productrouter.get('/products/tag/:tag', getProductsByTag);
 
 
 // Admin routes
-productrouter.post('/product-add',upload.single('productImage'),createProduct);
+productrouter.post('/product-add',auth,upload.single('productImage'),createProduct);
 productrouter.put('/product-update/:id',upload.single('productImage'), updateProduct);
 productrouter.delete('/product-delete/:id', deleteProduct);
 productrouter.patch('/product/:id/stock', updateProductStock);

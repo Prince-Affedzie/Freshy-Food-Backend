@@ -5,6 +5,7 @@ const admin = require('firebase-admin');
 const { OAuth2Client } = require('google-auth-library');
 const {NotificationModel}= require('../model/NotificationModel')
 const {sendWelcomeEmail} = require('../services/emailService')
+const Vendor = require('../model/Vendor');
 
 const googleclient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const AppleAuth = require('apple-signin-auth');
@@ -228,6 +229,36 @@ const login = async(req,res)=>{
 }
 
 
+const vendor_login = async(req,res)=>{
+    const {phone,} = req.body
+    console.log("Logging In")
+
+    try{
+        if (!phone){
+            return res.status(400).json({message:"All fields are required"})
+        }
+       
+        const findUser = await User.findOne({phone:phone})
+        const vendor = await Vendor.findOne({user:findUser._id})
+        
+        console.log(findUser)
+        if(!findUser || !vendor){
+            return res.status(404).json({message: "Account doesn't Exist. Please sign up first"})
+        }
+
+       const token = jwt.sign({id:findUser._id,role:findUser.role,vendor_id:vendor._id},process.env.token,{expiresIn:"30d"})
+       
+        res.cookie("token",token,{httpOnly:true,sameSite:"None",secure:true})
+        res.status(200).json({message:"Login Successful",role:findUser.role,user:findUser,token:token})
+
+    }catch(err){
+        console.log(err)
+        return res.status(500).json({message: "Internal Server Error"})
+    }
+
+}
+
+
 const logout =async(req,res)=>{
     let token
     if (req.cookies && req.cookies.token) {
@@ -390,7 +421,7 @@ const getNotifications = async(req,res)=>{
 
 
 
-module.exports = {signUp,login,logout,updateUser,deleteAccount,markNotificationAsRead,signUpByGoogle,google_login,appleSignUpOrLogin,
+module.exports = {signUp,login,vendor_login,logout,updateUser,deleteAccount,markNotificationAsRead,signUpByGoogle,google_login,appleSignUpOrLogin,
     getNotifications,deleteBulkNotification,updatePushToken,deleteNotification,createNotification,}
 
 

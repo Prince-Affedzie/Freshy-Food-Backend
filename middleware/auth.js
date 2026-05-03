@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 
 const auth = async (req, res, next) => {
+  console.log("At Auth receiving request")
   try {
     let token;
 
@@ -14,16 +15,17 @@ const auth = async (req, res, next) => {
       token = req.headers.authorization.split(" ")[1];
     }
 
-    
+    console.log(token)
     // 3. If no token at all
     if (!token) {
       return res.status(403).json({ message: "No token provided" });
     }
 
     // 4. Verify token
+    console.log(token)
     const decoded = jwt.verify(token, process.env.token);
+    
     req.user = decoded;
-
     next();
   } catch (err) {
     console.error("JWT verification failed:", err.message);

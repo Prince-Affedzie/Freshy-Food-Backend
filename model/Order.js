@@ -67,6 +67,15 @@ const orderSchema = new mongoose.Schema({
     enum: ['Pending', 'Processing', 'Out for Delivery', 'Delivered', 'Cancelled']
   },
 
+  subOrders: [{
+    vendor: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor' },
+    items: [{
+      product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+      quantity: Number,
+      price: Number
+    }],
+  }],
+
   // Optional: track if this was a guest → converted user
   wasGuestCheckout: { type: Boolean, default: false }
 }, {
