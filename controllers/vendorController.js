@@ -232,7 +232,8 @@ const getVendorsByMarket = async (req, res) => {
               _id: "$_id",
               name: "$name",
               profile_image: "$profile_image",
-              location: "$location"
+              location: "$location",
+              products:"$products",
             } 
           },
           count: { $sum: 1 }

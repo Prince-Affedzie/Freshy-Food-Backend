@@ -118,7 +118,7 @@ async notifyAdminsNewUser(user) {
   async sendWelcomeNotification(userId) {
   return this.sendNotification({
     userId,
-    title: "🎉 Welcome to FreshyFood Factory",
+    title: "🎉 Welcome to CediMart",
     message: "Your kitchen just got easier. Start ordering fresh groceries and essentials anytime!",
   });
 }

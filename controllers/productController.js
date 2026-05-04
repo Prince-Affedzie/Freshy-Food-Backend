@@ -113,6 +113,7 @@ const getAllProducts = asyncHandler(async (req, res) => {
     //.populate('vendor','market_name location')
     const [products, total] = await Promise.all([
       Product.find(query)
+        .populate('vendor','market_name location')
         .sort(sortOption)
         .skip(skip)
         .limit(limitNum)
@@ -140,8 +141,8 @@ const getAllProducts = asyncHandler(async (req, res) => {
       isLowStock: product.countInStock <= 10 && product.countInStock > 0,
       isOutOfStock: product.countInStock === 0,
       inStock: product.countInStock > 0,
-      //market_name:product.vendor.market_name,
-      //location:product.vendor.location,
+      market_name:product.vendor.market_name,
+      location:product.vendor.location,
       createdAt: product.createdAt,
       updatedAt: product.updatedAt
     }));
@@ -185,6 +186,7 @@ const getAllProducts = asyncHandler(async (req, res) => {
     res.status(200).json(response);
 
   } catch (error) {
+    console.log(error)
     res.status(500).json({
       success: false,
       message: "Error fetching products",
@@ -232,9 +234,9 @@ const getProductById = asyncHandler(async (req, res) => {
     
     // Check if identifier is a valid ObjectId
     
-    product = await Product.findById(identifier)
+    product = await Product.findById(identifier).populate('vendor','market_name location');
     /*console.log(product)
-    .populate('vendor','market_name location');*/
+    */
     
     if (!product) {
       return res.status(404).json({
@@ -281,8 +283,8 @@ const getProductById = asyncHandler(async (req, res) => {
         isInSeason: checkIfInSeason(product.seasonality),
         createdAt: product.createdAt,
         updatedAt: product.updatedAt,
-       // market_name:product.vendor.market_name,
-       // location:product.vendor.location,
+        market_name:product.vendor.market_name,
+        location:product.vendor.location,
         relatedProducts: relatedProducts.map(p => ({
           id: p._id,
           name: p.name,
@@ -400,8 +402,9 @@ const getProductsByCategory = asyncHandler(async (req, res) => {
       category: { $regex: new RegExp(`^${standardizedCategory}$`, "i") },
       isAvailable: true
     };
-    //.populate('vendor','market_name location')
+    
     const products = await Product.find(categoryQuery)
+      .populate('vendor','market_name location')
       .sort(sortOption)
       .skip(skip)
       .limit(limitValue)
@@ -498,7 +501,9 @@ const getProductsByCategory = asyncHandler(async (req, res) => {
         countInStock: p.countInStock,
         inStock: p.countInStock > 0,
         isLowStock: p.countInStock <= 10 && p.countInStock > 0,
-        description: p.description
+        location:p.vendor.location,
+        market_name:p.vendor.market_name,
+         description: p.description
           ? p.description.substring(0, 100) + "..."
           : null,
         category: p.category,
@@ -857,6 +862,7 @@ const updateProduct = asyncHandler(async (req, res) => {
     
     // Handle duplicate key error
     if (error.code === 11000) {
+      console.log(error)
       return res.status(400).json({
         success: false,
         message: 'Product with this name already exists'
@@ -866,6 +872,7 @@ const updateProduct = asyncHandler(async (req, res) => {
     // Handle validation errors
     if (error.name === 'ValidationError') {
       const errors = Object.values(error.errors).map(err => err.message);
+      console.log(error)
       return res.status(400).json({
         success: false,
         message: 'Validation error',

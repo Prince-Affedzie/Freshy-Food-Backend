@@ -6,13 +6,13 @@ const resend = new Resend(process.env.RESEND_API_KEY);
  console.log("sending email")
  try{
    const response = await resend.emails.send({
-    from: "FreshyFood Factory <noreply@mail.workaflow.live>",
+    from: "CediMart <noreply@mail.workaflow.live>",
     to: userEmail,
-    subject: "Welcome to FreshyFood Factory 🛒",
+    subject: "Welcome to CediMart 🛒",
     html: `
 <p>Hello ${firstName},</p>
 
-<p>Welcome to FreshyFood Factory 🎉</p>
+<p>Welcome to CediMart 🎉</p>
 
 <p>We're excited to have you. You can now order fresh groceries and kitchen essentials easily.</p>
 
@@ -28,7 +28,7 @@ Download the FreshyFood app
 
 <p>
 Prince <br>
-FreshyFood Factory
+CediMart
 </p>
 `
   })
@@ -53,15 +53,15 @@ const sendOrderConfirmationEmail=async(userEmail, firstName, order) =>{
       .join("");
 
     await resend.emails.send({
-      from: "FreshyFood Factory <noreply@mail.workaflow.live>",
+      from: "CediMart <noreply@mail.workaflow.live>",
       to: userEmail,
-      subject: `Your FreshyFood Factory Order #${order._id} is Confirmed 🛒`,
+      subject: `Your CediMart Order #${order._id} is Confirmed 🛒`,
       html: `
         <div style="font-family: Arial, sans-serif; line-height:1.6;">
           
           <h2>Hi ${firstName},</h2>
 
-          <p>Thank you for shopping with <strong>FreshyFood Factory</strong>! 🎉</p>
+          <p>Thank you for shopping with <strong>CediMart</strong>! 🎉</p>
 
           <p>Your order has been successfully received and is now being processed.</p>
 
@@ -82,14 +82,14 @@ const sendOrderConfirmationEmail=async(userEmail, firstName, order) =>{
           </p>
 
           <p>
-            Thank you for choosing FreshyFood Factory for your kitchen needs.
+            Thank you for choosing CediMart for your kitchen needs.
           </p>
 
           <br>
 
           <p>
             Best regards,<br>
-            <strong>FreshyFood Factory Team</strong>
+            <strong>CediMart Team</strong>
           </p>
 
         </div>
