@@ -5,6 +5,7 @@ const slugify = require('slugify');
 const cloudinary = require('../Utils/cloudinaryConfig')
 const redis = require("../config/redis");
 const Vendor = require('../model/Vendor');
+const { uploadProductImage, deleteProductImage} = require('../config/supabaseS3')
 
 // Helper function to generate slug
 const generateSlug = (name) => {
@@ -109,6 +110,7 @@ const getAllProducts = asyncHandler(async (req, res) => {
     const skip = (pageNum - 1) * limitNum;
 
     // Fetch products
+    //.populate('vendor','market_name location')
     const [products, total] = await Promise.all([
       Product.find(query)
         .sort(sortOption)
@@ -138,6 +140,8 @@ const getAllProducts = asyncHandler(async (req, res) => {
       isLowStock: product.countInStock <= 10 && product.countInStock > 0,
       isOutOfStock: product.countInStock === 0,
       inStock: product.countInStock > 0,
+      //market_name:product.vendor.market_name,
+      //location:product.vendor.location,
       createdAt: product.createdAt,
       updatedAt: product.updatedAt
     }));
@@ -199,6 +203,7 @@ const getProductsByTag = async (req, res) => {
       tags: tag,
       isAvailable: true
     }).sort({createdAt:-1});
+    //.populate('vendor','market_name location')
 
     res.status(200).json({
       success: true,
@@ -222,13 +227,14 @@ const getProductsByTag = async (req, res) => {
 const getProductById = asyncHandler(async (req, res) => {
   try {
     const { identifier } = req.params;
-    console.log(req.params)
-
+    
     let product;
     
     // Check if identifier is a valid ObjectId
     
-    product = await Product.findById(identifier);
+    product = await Product.findById(identifier)
+    /*console.log(product)
+    .populate('vendor','market_name location');*/
     
     if (!product) {
       return res.status(404).json({
@@ -275,6 +281,8 @@ const getProductById = asyncHandler(async (req, res) => {
         isInSeason: checkIfInSeason(product.seasonality),
         createdAt: product.createdAt,
         updatedAt: product.updatedAt,
+       // market_name:product.vendor.market_name,
+       // location:product.vendor.location,
         relatedProducts: relatedProducts.map(p => ({
           id: p._id,
           name: p.name,
@@ -291,6 +299,7 @@ const getProductById = asyncHandler(async (req, res) => {
    
     res.status(200).json(response);
   } catch (error) {
+    console.log(error)
     res.status(500).json({
       success: false,
       message: 'Error fetching product',
@@ -391,7 +400,7 @@ const getProductsByCategory = asyncHandler(async (req, res) => {
       category: { $regex: new RegExp(`^${standardizedCategory}$`, "i") },
       isAvailable: true
     };
-
+    //.populate('vendor','market_name location')
     const products = await Product.find(categoryQuery)
       .sort(sortOption)
       .skip(skip)
@@ -598,36 +607,27 @@ const createProduct = asyncHandler(async (req, res) => {
       finalSlug = `${slug}-${Date.now()}`;
     }
 
-    // Upload image to Cloudinary
     let imageUrl = '';
-    let imagePublicId = '';
-    
-    try {
-      // Convert buffer to base64 for Cloudinary
-      const b64 = Buffer.from(req.file.buffer).toString('base64');
-      const dataURI = `data:${req.file.mimetype};base64,${b64}`;
-      
-      // Upload to Cloudinary
-      const cloudinaryResult = await cloudinary.uploader.upload(dataURI, {
-        folder: 'freshy-food/products',
-        resource_type: 'auto',
-        transformation: [
-          { width: 800, height: 800, crop: 'limit' }, 
-          { quality: 'auto:good' }, 
-        ]
-      });
-      
-      imageUrl = cloudinaryResult.secure_url;
-      imagePublicId = cloudinaryResult.public_id;
-      
-    } catch (uploadError) {
-      console.error('Cloudinary upload error:', uploadError);
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to upload image to Cloudinary',
-        error: uploadError.message
-      });
-    }
+
+   try {
+  // Use the helper you just created
+  // req.file comes from your multer middleware
+    if (req.file) {
+    imageUrl = await uploadProductImage(req.file);
+    } else {
+     return res.status(400).json({
+      success: false,
+      message: 'Please upload a product image',
+    });
+  }
+} catch (uploadError) {
+  console.error('Supabase upload error:', uploadError);
+  return res.status(500).json({
+    success: false,
+    message: 'Failed to upload image to NovanMart storage',
+    error: uploadError.message
+  });
+}
 
     // Create product data object (only fields from schema)
     const vendor =  await Vendor.findOne({user:req.user.id})
@@ -636,7 +636,7 @@ const createProduct = asyncHandler(async (req, res) => {
       slug: finalSlug,
       category,
       image: imageUrl,
-      cloudinaryId: imagePublicId,
+     
       price: priceNumber,
       unit,
       tags:tags,
@@ -732,41 +732,13 @@ const updateProduct = asyncHandler(async (req, res) => {
 
     // Handle image upload if new image is provided
     if (req.file) {
-      try {
-        // Delete old image from Cloudinary if it exists
-        if (product.cloudinaryId) {
-          try {
-            await cloudinary.uploader.destroy(product.cloudinaryId);
-          } catch (cloudinaryError) {
-            console.warn('Failed to delete old Cloudinary image:', cloudinaryError);
-          }
-        }
+      // 1. Delete the OLD image from Supabase
+      await deleteProductImage(product.image);
 
-        // Upload new image to Cloudinary
-        const b64 = Buffer.from(req.file.buffer).toString('base64');
-        const dataURI = `data:${req.file.mimetype};base64,${b64}`;
-        
-        const cloudinaryResult = await cloudinary.uploader.upload(dataURI, {
-          folder: 'freshy-food/products',
-          resource_type: 'auto',
-          transformation: [
-            { width: 800, height: 800, crop: 'limit' }, 
-            { quality: 'auto:good' }, 
-          ]
-        });
-        
-        updates.image = cloudinaryResult.secure_url;
-        updates.cloudinaryId = cloudinaryResult.public_id;
-        
-      } catch (uploadError) {
-        console.error('Cloudinary upload error:', uploadError);
-        return res.status(500).json({
-          success: false,
-          message: 'Failed to upload image to Cloudinary',
-          error: uploadError.message
-        });
-      }
-    }
+      // 2. Upload the NEW image
+      const newImageUrl = await uploadProductImage(req.file);
+       updates.image = newImageUrl;
+     }
 
     // If name is being updated, generate new slug
     if (updates.name && updates.name !== product.name) {
@@ -933,8 +905,9 @@ const deleteProduct = asyncHandler(async (req, res) => {
     }
 
     
-    product.isAvailable = false;
-    await product.save();
+    
+    await deleteProductImage(product.image);
+    await product.deleteOne();
     const productKeys = await redis.keys("products:*");
     const categoryKeys = await redis.keys("category_products:*");
 

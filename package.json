@@ -8,6 +8,8 @@
 
    "dependencies": {
 
+      "@supabase/supabase-js": "^2.105.1",
+
       "apple-signin-auth": "^2.0.0",
 
       "axios": "^1.13.2",
