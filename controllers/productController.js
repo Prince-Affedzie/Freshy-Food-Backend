@@ -77,6 +77,13 @@ const getAllProducts = asyncHandler(async (req, res) => {
       if (maxPrice) query.price.$lte = Number(maxPrice);
     }
 
+    // Market filter (by market_name inside vendor)
+   if (req.query.market) {
+    const vendors = await Vendor.find({ market_name: req.query.market }).select('_id');
+    const vendorIds = vendors.map(v => v._id);
+    query.vendor = { $in: vendorIds };
+   }
+
     // Availability filter
     if (isAvailable !== undefined) {
       query.isAvailable = isAvailable === "true";
