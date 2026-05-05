@@ -31,6 +31,7 @@ const getAllProducts = asyncHandler(async (req, res) => {
       page = 1,
       limit = 20
     } = req.query;
+    console.log(req.query)
 
     // Dynamic cache key based on query params
     const cacheKey = `products:${JSON.stringify(req.query)}`;
@@ -79,6 +80,7 @@ const getAllProducts = asyncHandler(async (req, res) => {
 
     // Market filter (by market_name inside vendor)
    if (req.query.market) {
+    
     const vendors = await Vendor.find({ market_name: req.query.market }).select('_id');
     const vendorIds = vendors.map(v => v._id);
     query.vendor = { $in: vendorIds };
@@ -211,8 +213,10 @@ const getProductsByTag = async (req, res) => {
     const products = await Product.find({
       tags: tag,
       isAvailable: true
-    }).sort({createdAt:-1});
-    //.populate('vendor','market_name location')
+    })
+    .populate('vendor','market_name location')
+    .sort({createdAt:-1});
+    
 
     res.status(200).json({
       success: true,

@@ -44,7 +44,8 @@ const productSchema = new mongoose.Schema({
   description: { type: String },
   vendor:{
     type:mongoose.Schema.Types.ObjectId,
-    ref:"Vendor"
+    ref:"Vendor",
+    index: true
 
   }
 }, {
