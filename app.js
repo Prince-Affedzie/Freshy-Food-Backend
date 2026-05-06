@@ -11,6 +11,7 @@ require('dotenv').config()
 const NotificationService = require('./services/notificationService');
 const {authenticateSocketConnection} = require('./Validators/authenticateSocketConnection')
 const Product = require('./model/Product');
+const Vendor = require('./model/Vendor');
 const serviceAccount = process.env.FIREBASE_CONFIG 
   ? JSON.parse(process.env.FIREBASE_CONFIG) 
   : require('./config/serviceAccountKey.json');
@@ -93,12 +94,12 @@ app.set('notificationService', notificationService);
 
 
 
-
 mongo_connection_url = process.env.DB_URL
 
 mongoose.connect(mongo_connection_url)
          .then(()=>{
         server.listen(process.env.PORT || 5000)
+        
         console.log('Listening on port 5000')
          testRedis();
          }).catch((err)=>console.log(err))

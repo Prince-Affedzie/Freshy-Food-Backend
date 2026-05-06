@@ -118,8 +118,7 @@ const getVendors = async (req, res) => {
 const getVendor = async (req, res) => {
   try {
     const vendor = await Vendor.findById(req.params.id).populate('products');
-    console.log(vendor)
-
+    
     if (!vendor) {
       return res.status(404).json({ success: false, error: 'Vendor not found' });
     }
@@ -234,6 +233,7 @@ const getVendorsByMarket = async (req, res) => {
               profile_image: "$profile_image",
               location: "$location",
               products:"$products",
+              categories:"$categories",
             } 
           },
           count: { $sum: 1 }

@@ -44,6 +44,20 @@ const vendorSchema = new mongoose.Schema({
     ref: 'Product'
   }],
 
+  categories: [{
+    type: String,
+    enum: [
+      'Tubers and Roots', 
+      'Fruits', 
+      'Vegetables', 
+      'Grains, Cereals & Legumes', 
+      'Meat', 
+      'Cold Store', 
+      'Super Market'
+    ],
+    message: '{VALUE} is not a valid category' // Custom error message
+  }],
+
   is_verified: {
     type: Boolean,
     default: false 
