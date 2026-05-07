@@ -2,7 +2,7 @@ const axios = require("axios");
 
 const NALO_URL = "https://sms.nalosolutions.com/smsbackend/Resl_Nalo/send-message/";
 const NALO_KEY = process.env.NALO_API_KEY;
-const SENDER_ID = "FreshyFoods";
+const SENDER_ID = "CediMart";
 
 // Format phone (reuse your function if you want)
 const formatPhoneNumber = (phone) => {
