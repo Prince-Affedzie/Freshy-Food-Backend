@@ -26,7 +26,7 @@ const appleSignUpOrLogin = async (req, res) => {
     let user = await User.findOne({ appleId: appleUserId });
 
     if (user) {
-       const apptoken = jwt.sign({id:user._id,role:user.role},process.env.token,{expiresIn:"30d"});
+       const apptoken = jwt.sign({id:user._id,role:user.role},process.env.token,{expiresIn:"7d"});
        res.cookie("token",apptoken,{httpOnly:true,sameSite:"None",secure:true})
        return res.status(200).json({message:"Login Successful",role:user.role,user:user,token:apptoken});
     }
@@ -43,7 +43,7 @@ const appleSignUpOrLogin = async (req, res) => {
     });
 
     await user.save();
-    const apptoken = jwt.sign({id:user._id,role:user.role},process.env.token,{expiresIn:"30d"})
+    const apptoken = jwt.sign({id:user._id,role:user.role},process.env.token,{expiresIn:"7d"})
     res.cookie("token",apptoken,{httpOnly:true,sameSite:"None",secure:true})
 
     return res.status(200).json({success:true,message:"Registration Successful",role:user.role,user:user,token:apptoken});
@@ -106,7 +106,7 @@ if (!user) {
   }
 
 
-    const apptoken = jwt.sign({id:user._id,role:user.role},process.env.token,{expiresIn:"30d"})
+    const apptoken = jwt.sign({id:user._id,role:user.role},process.env.token,{expiresIn:"7d"})
     res.cookie("token",apptoken,{httpOnly:true,sameSite:"None",secure:true})
     
     await notificationService.sendWelcomeNotification(user._id)
@@ -145,7 +145,7 @@ const google_login = async(req,res)=>{
       return res.status(404).json({message: "Account Not Found. Please sign up first"})
     }
        
-        const apptoken = jwt.sign({id:findUser._id,role:findUser.role},process.env.token,{expiresIn:"30d"})
+        const apptoken = jwt.sign({id:findUser._id,role:findUser.role},process.env.token,{expiresIn:"7d"})
         res.cookie("token",apptoken,{httpOnly:true,sameSite:"None",secure:true})
         
         res.status(200).json({message:"Login Successful",role:findUser.role,user:findUser,token:apptoken})
@@ -190,7 +190,7 @@ const signUp = async(req,res)=>{
       console.error('Admin signup notification failed:', e);
     }
 
-    const token = jwt.sign({id:user._id,role:user.role},process.env.token,{expiresIn:"30d"})
+    const token = jwt.sign({id:user._id,role:user.role},process.env.token,{expiresIn:"7d"})
     res.cookie("token",token,{httpOnly:true,sameSite:"None",secure:true})
     res.status(200).json({message:"Registration Successful",role:user.role,user:user,token:token})
 }catch(err){
@@ -217,8 +217,9 @@ const login = async(req,res)=>{
         if(!isPasswordMatch){
             return res.status(401).json({message:"Invalid Credentials"})
         }
-        const token = jwt.sign({id:findUser._id,role:findUser.role},process.env.token,{expiresIn:"30d"})
+        const token = jwt.sign({id:findUser._id,role:findUser.role},process.env.token,{expiresIn:"7d"})
         res.cookie("token",token,{httpOnly:true,sameSite:"None",secure:true})
+        console.log("Login Successful",findUser)
         res.status(200).json({message:"Login Successful",role:findUser.role,user:findUser,token:token})
 
     }catch(err){
@@ -246,7 +247,7 @@ const vendor_login = async(req,res)=>{
             return res.status(404).json({message: "Account doesn't Exist. Please sign up first"})
         }
 
-       const token = jwt.sign({id:findUser._id,role:findUser.role,vendor_id:vendor._id},process.env.token,{expiresIn:"30d"})
+       const token = jwt.sign({id:findUser._id,role:findUser.role,vendor_id:vendor._id},process.env.token,{expiresIn:"7d"})
        
         res.cookie("token",token,{httpOnly:true,sameSite:"None",secure:true})
         res.status(200).json({message:"Login Successful",role:findUser.role,user:findUser,token:token})
