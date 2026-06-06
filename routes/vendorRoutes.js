@@ -18,8 +18,8 @@ const {auth} = require('../middleware/auth');
 
 
 vendorRouter.post('/vendor',upload.fields([
-  { name: 'store_banner', maxCount: 1 },
-  { name: 'profile_image', maxCount: 1 }
+  { name: 'storeBanner', maxCount: 1 },
+  { name: 'profileImage', maxCount: 1 }
 ]),createVendor)
 
 vendorRouter.get('/vendor',getVendors)
@@ -30,16 +30,16 @@ vendorRouter.get('/vendor/my_products',auth, getVendorProducts)
 
 vendorRouter.get('/vendor/:id',getVendor)
 vendorRouter.put('/vendor/:id',upload.fields([
-  { name: 'store_banner', maxCount: 1 },
-  { name: 'profile_image', maxCount: 1 }
+  { name: 'storeBanner', maxCount: 1 },
+  { name: 'profileImage', maxCount: 1 }
 ]),updateVendor)
 vendorRouter.delete('/vendor/:id',deleteVendor)
 
 vendorRouter.get('/vendor_profile',auth,getMyVendorProfile)
 
 vendorRouter.put('/vendor_update_profile',auth,upload.fields([
-  { name: 'store_banner', maxCount: 1 },
-  { name: 'profile_image', maxCount: 1 }
+  { name: 'storeBanner', maxCount: 1 },
+  { name: 'profileImage', maxCount: 1 }
 ]),updateMyVendorProfile)
 
 vendorRouter.get('/vendor_my_orders',auth,getVendorOrders)

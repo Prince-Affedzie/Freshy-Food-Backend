@@ -1,38 +1,38 @@
 const express = require('express');
-const {upload} = require('../Utils/mutlerConfig')
+const { upload } = require('../Utils/mutlerConfig');
 const productrouter = express.Router();
-const {auth} = require('../middleware/auth');
+const { auth } = require('../middleware/auth');
 const {
   getAllProducts,
   getProductById,
   getProductsByCategory,
+  getProductsByCampus,
+  getProductsByTag,
   createProduct,
   updateProduct,
   deleteProduct,
-  updateProductStock,
-  bulkUpdateAvailability,
   searchProducts,
+  createProductReview,
+  toggleFavorite,
   getProductStats,
-  getSeasonalProducts,
-  getProductsByTag,
 } = require('../controllers/productController');
-//const { protect, admin } = require('../middleware/authMiddleware');
 
 // Public routes
 productrouter.get('/products', getAllProducts);
 productrouter.get('/products/category/:category', getProductsByCategory);
-productrouter.get('/products/search/:query', searchProducts);
-productrouter.get('/products/seasonal/current', getSeasonalProducts);
-productrouter.get('/product/:identifier', getProductById);
+productrouter.get('/products/campus/:campus', getProductsByCampus);
 productrouter.get('/products/tag/:tag', getProductsByTag);
+productrouter.get('/products/search/:query', searchProducts);
+productrouter.get('/products/stats', getProductStats);
+productrouter.get('/product/:id', getProductById);
 
+// Protected routes (logged in users)
+productrouter.post('/product/:id/review', auth, createProductReview);
+productrouter.post('/product/:id/favorite', auth, toggleFavorite);
 
-// Admin routes
-productrouter.post('/product-add',auth,upload.single('productImage'),createProduct);
-productrouter.put('/product-update/:id',upload.single('productImage'), updateProduct);
-productrouter.delete('/product-delete/:id', deleteProduct);
-productrouter.patch('/product/:id/stock', updateProductStock);
-productrouter.patch('/products/bulk/availability', bulkUpdateAvailability);
-productrouter.get('/products/stats/overview',  getProductStats);
+// Vendor routes
+productrouter.post('/product', auth, upload.array('productImages', 10), createProduct);
+productrouter.put('/product/:id', auth, upload.array('productImages', 10), updateProduct);
+productrouter.delete('/product/:id', auth, deleteProduct);
 
 module.exports = productrouter;

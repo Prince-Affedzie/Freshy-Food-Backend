@@ -1,67 +1,147 @@
 const mongoose = require('mongoose');
 
 const vendorSchema = new mongoose.Schema({
-  user:{
+  user: {
     type: mongoose.Schema.Types.ObjectId,
-    ref:'User'
+    ref: 'User',
+    required: true,
+    unique: true,
   },
+
   name: {
     type: String,
     required: true,
-    trim: true // Cleans up accidental whitespace
+    trim: true,
   },
-  market_name: { 
+
+  storeName: {
     type: String,
-    required: true, 
-    index: true ,
-    enum:['Madina Market','Mallam Market','Makola Market','Tema Market','Dansoman Market','Agbogbloshie Market','Kaneshie Market','Dome Market']
+    trim: true,
   },
-  store_banner: {
+
+  campus: {
     type: String,
-    default: 'default_banner.jpg'
+    enum: [
+      'UG',
+      'KNUST',
+      'UCC',
+      'UEW',
+      'UPSA',
+      'GIMPA',
+      'ASHESI',
+      'ATU',
+      'OTHER',
+    ],
+    index: true,
   },
-  profile_image: {
-    type: String,
-    default: 'default_profile.jpg'
-  },
-  profile_image_cloudinaryId:{
-    type: String,
-  },
-  store_banner_cloudinaryId:{
-    type:String
-  },
-  contact: {
-    type: String,
-    required: true 
-  },
+
   location: {
-    type: String, 
-    required: true
+    campusArea: {
+      type: String,
+    },
+    hostel: {
+      type: String,
+    },
   },
-  
+
+  phone: {
+    type: String,
+    required: true,
+    unique: true,
+  },
+
+  storeBanner: {
+    type: String,
+    default: 'default_banner.jpg',
+  },
+
+  storeBannerCloudinaryId: {
+    type: String,
+  },
+
+  profileImage: {
+    type: String,
+    default: 'default_profile.jpg',
+  },
+
+  profileImageCloudinaryId: {
+    type: String,
+  },
+
   products: [{
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Product'
+    ref: 'Product',
   }],
 
   categories: [{
     type: String,
     enum: [
-      'Tubers and Roots', 
-      'Fruits', 
-      'Vegetables', 
-      'Grains, Cereals & Legumes', 
-      'Meat', 
-      'Cold Store', 
-      'Super Market'
+      'electronics',
+      'phones and tablets',
+      'computers and laptops',
+      'gaming',
+      'fashion',
+      'books-course-materials',
+      'hostel-items',
+      'appliances',
+      'furniture',
+      'beauty and grooming',
+      'sports and fitness',
+      'accessories',
+      'food and drinks',
+      'services',
+      'other',
     ],
-    message: '{VALUE} is not a valid category' // Custom error message
   }],
 
-  is_verified: {
+  rating: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 5,
+  },
+
+  numReviews: {
+    type: Number,
+    default: 0,
+  },
+
+  totalSales: {
+    type: Number,
+    default: 0,
+  },
+
+  isVerified: {
     type: Boolean,
-    default: false 
-  }
-}, { timestamps: true }); 
+    default: false,
+  },
+
+  isActive: {
+    type: Boolean,
+    default: true,
+  },
+
+  bio: {
+    type: String,
+    maxlength: 500,
+  },
+
+  socialLinks: {
+    whatsapp: { type: String },
+    instagram: { type: String },
+  },
+}, {
+  timestamps: true,
+});
+
+vendorSchema.index({ campus: 1, isActive: 1 });
+vendorSchema.index({ categories: 1 });
+
+vendorSchema.virtual('productCount').get(function () {
+  return this.products?.length || 0;
+});
+
+vendorSchema.set('toJSON', { virtuals: true });
+vendorSchema.set('toObject', { virtuals: true });
 
 module.exports = mongoose.model('Vendor', vendorSchema);

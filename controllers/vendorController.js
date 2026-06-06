@@ -8,92 +8,192 @@ const Order = require('../model/Order');
 
 
 const createVendor = async (req, res) => {
-  // Start a transaction to ensure both Vendor and User are created together
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    const { name, contact } = req.body;
+    const {
+      name,
+      phone,
+      storeName,
+      campus,
+      campusArea,
+      hostel,
+      categories,
+      bio,
+      whatsapp,
+      instagram,
+    } = req.body;
 
-    // 1. Split the name into firstName and lastName
+    // Validate required fields
+    if (!name || !phone) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        message: 'Name and phone number are required',
+      });
+    }
+
+    // Validate campus if provided
+    const validCampuses = ['UG', 'KNUST', 'UCC', 'UEW', 'UPSA', 'GIMPA', 'ASHESI', 'ATU', 'OTHER'];
+    if (campus && !validCampuses.includes(campus)) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid campus',
+        validCampuses,
+      });
+    }
+
+    // Check if phone already exists
+    const existingUser = await User.findOne({ phone }).session(session);
+    if (existingUser) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        message: 'A user with this phone number already exists',
+      });
+    }
+
+    // Split the name into firstName and lastName
     const nameParts = name.trim().split(/\s+/);
     const firstName = nameParts[0];
     const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : 'Vendor';
 
-    let store_banner_url = '';
-    let store_banner_cloudinaryId = '';
-    let profile_image_url = '';
-    let profile_image_cloudinaryId = '';
+    let storeBannerUrl = '';
+    let storeBannerCloudinaryId = '';
+    let profileImageUrl = '';
+    let profileImageCloudinaryId = '';
 
     // Helper function to handle Cloudinary upload
     const uploadToCloudinary = async (fileBuffer, mimetype, folder) => {
       const b64 = Buffer.from(fileBuffer).toString('base64');
       const dataURI = `data:${mimetype};base64,${b64}`;
       return await cloudinary.uploader.upload(dataURI, {
-        folder: `freshy-food/${folder}`,
+        folder: `cedimart/${folder}`,
         resource_type: 'auto',
-        transformation: [{ width: 1000, height: 1000, crop: 'limit' }, { quality: 'auto:good' }]
+        transformation: [
+          { width: 1000, height: 1000, crop: 'limit' },
+          { quality: 'auto:good' },
+        ],
       });
     };
 
-    // 2. Handle Cloudinary Uploads
-    if (req.files?.store_banner) {
-      const result = await uploadToCloudinary(req.files.store_banner[0].buffer, req.files.store_banner[0].mimetype, 'vendors/banners');
-      store_banner_url = result.secure_url;
-      store_banner_cloudinaryId = result.public_id;
+    // Handle Cloudinary Uploads
+    if (req.files?.storeBanner) {
+      const result = await uploadToCloudinary(
+        req.files.storeBanner[0].buffer,
+        req.files.storeBanner[0].mimetype,
+        'vendors/banners'
+      );
+      storeBannerUrl = result.secure_url;
+      storeBannerCloudinaryId = result.public_id;
     }
 
-    if (req.files?.profile_image) {
-      const result = await uploadToCloudinary(req.files.profile_image[0].buffer, req.files.profile_image[0].mimetype, 'vendors/profiles');
-      profile_image_url = result.secure_url;
-      profile_image_cloudinaryId = result.public_id;
+    if (req.files?.profileImage) {
+      const result = await uploadToCloudinary(
+        req.files.profileImage[0].buffer,
+        req.files.profileImage[0].mimetype,
+        'vendors/profiles'
+      );
+      profileImageUrl = result.secure_url;
+      profileImageCloudinaryId = result.public_id;
     }
 
-    // 3. Create the User first
-    // We use the 'contact' from req.body as the phone number
+    // Create the User
     const user = new User({
       firstName,
       lastName,
-      phone: contact,
-      role: 'vendor' 
+      phone,
+      role: 'vendor',
     });
     await user.save({ session });
 
-    // 4. Create the Vendor and link the User ID
+    // Parse categories if sent as string
+    let parsedCategories = [];
+    if (categories) {
+      parsedCategories = Array.isArray(categories)
+        ? categories
+        : categories.split(',').map(c => c.trim()).filter(Boolean);
+    }
+
+    // Build vendor data
     const vendorData = {
-      ...req.body,
-      user: user._id, // Linking the account
-      store_banner: store_banner_url,
-      store_banner_cloudinaryId,
-      profile_image: profile_image_url,
-      profile_image_cloudinaryId
+      user: user._id,
+      name,
+      storeName: storeName || name,
+      phone,
+      campus: campus || undefined,
+      location: {
+        campusArea: campusArea || '',
+        hostel: hostel || '',
+      },
+      categories: parsedCategories.length > 0 ? parsedCategories : undefined,
+      bio: bio || '',
+      socialLinks: {
+        whatsapp: whatsapp || '',
+        instagram: instagram || '',
+      },
+      storeBanner: storeBannerUrl || 'default_banner.jpg',
+      storeBannerCloudinaryId: storeBannerCloudinaryId || '',
+      profileImage: profileImageUrl || 'default_profile.jpg',
+      profileImageCloudinaryId: profileImageCloudinaryId || '',
     };
 
     const vendor = await Vendor.create([vendorData], { session });
 
-    // Commit the transaction
     await session.commitTransaction();
     session.endSession();
 
-    return res.status(201).json({ 
-      success: true, 
-      data: { vendor: vendor[0], user } 
+    return res.status(201).json({
+      success: true,
+      message: 'Vendor account created successfully',
+      data: {
+        vendor: vendor[0],
+        user: {
+          _id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          phone: user.phone,
+          role: user.role,
+        },
+      },
     });
-
   } catch (error) {
-    
     await session.abortTransaction();
     session.endSession();
 
+    // Handle duplicate key errors
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyValue)[0];
+      return res.status(400).json({
+        success: false,
+        message: `A vendor with this ${field} already exists`,
+        error: error.message,
+      });
+    }
+
+    // Handle validation errors
+    if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Validation error',
+        errors,
+      });
+    }
+
     console.error('Vendor/User Creation Error:', error);
-    res.status(400).json({ 
-      success: false, 
-      message: 'Failed to create vendor account', 
-      error: error.message 
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create vendor account',
+      error: error.message,
     });
   }
 };
-
 
 const getVendors = async (req, res) => {
   try {
@@ -133,9 +233,8 @@ const getVendor = async (req, res) => {
 const updateVendor = async (req, res) => {
   try {
     const { id } = req.params;
-    
-    // 1. Find the existing vendor to get current Cloudinary IDs
-    let vendor = await Vendor.findById(id);
+
+    const vendor = await Vendor.findById(id);
 
     if (!vendor) {
       return res.status(404).json({ success: false, error: 'Vendor not found' });
@@ -145,62 +244,125 @@ const updateVendor = async (req, res) => {
       const b64 = Buffer.from(fileBuffer).toString('base64');
       const dataURI = `data:${mimetype};base64,${b64}`;
       return await cloudinary.uploader.upload(dataURI, {
-        folder: `freshy-food/${folder}`,
+        folder: `cedimart/${folder}`,
         resource_type: 'auto',
-        transformation: [{ width: 1000, height: 1000, crop: 'limit' }, { quality: 'auto:good' }]
+        transformation: [
+          { width: 1000, height: 1000, crop: 'limit' },
+          { quality: 'auto:good' },
+        ],
       });
     };
 
     let updatedData = { ...req.body };
 
-    if (req.files && req.files.store_banner) {
+    // Remove file objects from updatedData — prevent "[object Object]" strings
+    delete updatedData.storeBanner;
+    delete updatedData.profileImage;
+    // Also clean old field names if they come through
+    delete updatedData.store_banner;
+    delete updatedData.profile_image;
+
+    // Handle Store Banner Upload
+    if (req.files && req.files.storeBanner) {
       // Delete old banner if it exists
-      if (vendor.store_banner_cloudinaryId) {
-        await cloudinary.uploader.destroy(vendor.store_banner_cloudinaryId);
+      if (vendor.storeBannerCloudinaryId) {
+        await cloudinary.uploader.destroy(vendor.storeBannerCloudinaryId);
       }
-      
-      // Upload new banner
+
       const bannerResult = await uploadToCloudinary(
-        req.files.store_banner[0].buffer,
-        req.files.store_banner[0].mimetype,
+        req.files.storeBanner[0].buffer,
+        req.files.storeBanner[0].mimetype,
         'vendors/banners'
       );
-      updatedData.store_banner = bannerResult.secure_url;
-      updatedData.store_banner_cloudinaryId = bannerResult.public_id;
+
+      updatedData.storeBanner = bannerResult.secure_url;
+      updatedData.storeBannerCloudinaryId = bannerResult.public_id;
     }
 
-    // 3. Handle Profile Image Update
-    if (req.files && req.files.profile_image) {
+    // Handle Profile Image Upload
+    if (req.files && req.files.profileImage) {
       // Delete old profile image if it exists
-      if (vendor.profile_image_cloudinaryId) {
-        await cloudinary.uploader.destroy(vendor.profile_image_cloudinaryId);
+      if (vendor.profileImageCloudinaryId) {
+        await cloudinary.uploader.destroy(vendor.profileImageCloudinaryId);
       }
 
-      // Upload new profile image
       const profileResult = await uploadToCloudinary(
-        req.files.profile_image[0].buffer,
-        req.files.profile_image[0].mimetype,
+        req.files.profileImage[0].buffer,
+        req.files.profileImage[0].mimetype,
         'vendors/profiles'
       );
-      updatedData.profile_image = profileResult.secure_url;
-      updatedData.profile_image_cloudinaryId = profileResult.public_id;
+
+      updatedData.profileImage = profileResult.secure_url;
+      updatedData.profileImageCloudinaryId = profileResult.public_id;
+    }
+
+    // Validate campus if being updated
+    if (updatedData.campus) {
+      const validCampuses = ['UG', 'KNUST', 'UCC', 'UEW', 'UPSA', 'GIMPA', 'ASHESI', 'ATU', 'OTHER'];
+      if (!validCampuses.includes(updatedData.campus)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid campus',
+          validCampuses,
+        });
+      }
+    }
+
+    // Handle nested location object
+    if (updatedData.campusArea !== undefined || updatedData.hostel !== undefined) {
+      updatedData.location = {
+        ...vendor.location,
+        ...(updatedData.campusArea !== undefined && { campusArea: updatedData.campusArea }),
+        ...(updatedData.hostel !== undefined && { hostel: updatedData.hostel }),
+      };
+      delete updatedData.campusArea;
+      delete updatedData.hostel;
+    }
+
+    // Handle nested socialLinks object
+    if (updatedData.whatsapp !== undefined || updatedData.instagram !== undefined) {
+      updatedData.socialLinks = {
+        ...vendor.socialLinks,
+        ...(updatedData.whatsapp !== undefined && { whatsapp: updatedData.whatsapp }),
+        ...(updatedData.instagram !== undefined && { instagram: updatedData.instagram }),
+      };
+      delete updatedData.whatsapp;
+      delete updatedData.instagram;
+    }
+
+    // Handle categories as array
+    if (updatedData.categories) {
+      if (typeof updatedData.categories === 'string') {
+        updatedData.categories = updatedData.categories.split(',').map(c => c.trim()).filter(Boolean);
+      }
     }
 
     const updatedVendor = await Vendor.findByIdAndUpdate(id, updatedData, {
       new: true,
-      runValidators: true
-    });
+      runValidators: true,
+    }).populate('user', 'firstName lastName phone role');
 
-    res.status(200).json({ 
-      success: true, 
-      data: updatedVendor 
+    res.status(200).json({
+      success: true,
+      message: 'Vendor updated successfully',
+      data: updatedVendor,
     });
-
   } catch (error) {
     console.error('Update Vendor Error:', error);
-    res.status(400).json({ 
-      success: false, 
-      error: error.message 
+
+    // Handle validation errors
+    if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        error: 'Validation error',
+        errors,
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
     });
   }
 };
@@ -274,6 +436,7 @@ const getMyVendorProfile = async(req,res)=>{
     if(!vendor){
       return res.status(404).json({message:"Vendor not Found"})
     }
+    console.log(vendor)
     return res.status(200).json(vendor)
 
   } catch (error) {
@@ -285,11 +448,10 @@ const getMyVendorProfile = async(req,res)=>{
 
 const updateMyVendorProfile = async (req, res) => {
   try {
-  
-     console.log("Receiving Update Profile Request")
-    const user = await User.findById(req.user.id)
-    const vendor = await Vendor.findOne({user:user._id})
+    console.log("Receiving Update Profile Request");
     
+    const user = await User.findById(req.user.id);
+    const vendor = await Vendor.findOne({ user: user._id });
 
     if (!vendor) {
       return res.status(404).json({ success: false, error: 'Vendor not found' });
@@ -299,66 +461,80 @@ const updateMyVendorProfile = async (req, res) => {
       const b64 = Buffer.from(fileBuffer).toString('base64');
       const dataURI = `data:${mimetype};base64,${b64}`;
       return await cloudinary.uploader.upload(dataURI, {
-        folder: `freshy-food/${folder}`,
+        folder: `cedimart/${folder}`,
         resource_type: 'auto',
-        transformation: [{ width: 1000, height: 1000, crop: 'limit' }, { quality: 'auto:good' }]
+        transformation: [
+          { width: 1000, height: 1000, crop: 'limit' },
+          { quality: 'auto:good' }
+        ],
       });
     };
 
     let updatedData = { ...req.body };
 
-    if (req.files && req.files.store_banner) {
-      // Delete old banner if it exists
-      if (vendor.store_banner_cloudinaryId) {
-        await cloudinary.uploader.destroy(vendor.store_banner_cloudinaryId);
-      }
+    // Remove file objects from updatedData — we don't want to save those as strings
+    delete updatedData.storeBanner;
+    delete updatedData.profileImage;
+
+    // Handle Store Banner Upload
+    if (req.files && req.files.storeBanner) {
+      console.log("Uploading new store banner...");
       
-      // Upload new banner
+      // Delete old banner if it exists
+      if (vendor.storeBannerCloudinaryId) {
+        await cloudinary.uploader.destroy(vendor.storeBannerCloudinaryId);
+      }
+
       const bannerResult = await uploadToCloudinary(
-        req.files.store_banner[0].buffer,
-        req.files.store_banner[0].mimetype,
+        req.files.storeBanner[0].buffer,
+        req.files.storeBanner[0].mimetype,
         'vendors/banners'
       );
-      updatedData.store_banner = bannerResult.secure_url;
-      updatedData.store_banner_cloudinaryId = bannerResult.public_id;
+      
+      updatedData.storeBanner = bannerResult.secure_url;
+      updatedData.storeBannerCloudinaryId = bannerResult.public_id;
     }
 
-    // 3. Handle Profile Image Update
-    if (req.files && req.files.profile_image) {
+    // Handle Profile Image Upload
+    if (req.files && req.files.profileImage) {
+      console.log("Uploading new profile image...");
+      
       // Delete old profile image if it exists
-      if (vendor.profile_image_cloudinaryId) {
-        await cloudinary.uploader.destroy(vendor.profile_image_cloudinaryId);
+      if (vendor.profileImageCloudinaryId) {
+        await cloudinary.uploader.destroy(vendor.profileImageCloudinaryId);
       }
 
-      // Upload new profile image
       const profileResult = await uploadToCloudinary(
-        req.files.profile_image[0].buffer,
-        req.files.profile_image[0].mimetype,
+        req.files.profileImage[0].buffer,
+        req.files.profileImage[0].mimetype,
         'vendors/profiles'
       );
-      updatedData.profile_image = profileResult.secure_url;
-      updatedData.profile_image_cloudinaryId = profileResult.public_id;
+      
+      updatedData.profileImage = profileResult.secure_url;
+      updatedData.profileImageCloudinaryId = profileResult.public_id;
     }
 
-    const updatedVendor = await Vendor.findByIdAndUpdate(user._id, updatedData, {
-      new: true,
-      runValidators: true
-    });
+    // ✅ FIX: Use vendor._id, not user._id
+    const updatedVendor = await Vendor.findByIdAndUpdate(
+      vendor._id,  // ← This was the bug! Was user._id, should be vendor._id
+      updatedData,
+      { new: true, runValidators: true }
+    );
 
-    res.status(200).json({ 
-      success: true, 
-      data: updatedVendor 
-    });
+    console.log("Profile updated successfully");
 
+    res.status(200).json({
+      success: true,
+      data: updatedVendor,
+    });
   } catch (error) {
     console.error('Update Vendor Error:', error);
-    res.status(400).json({ 
-      success: false, 
-      error: error.message 
+    res.status(500).json({
+      success: false,
+      error: error.message,
     });
   }
 };
-
 
 
 

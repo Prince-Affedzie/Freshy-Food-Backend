@@ -1,53 +1,119 @@
-const { createClient } = require('@supabase/supabase-js')
+const { createClient } = require("@supabase/supabase-js");
 
-// Initialize Supabase
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
+// -------------------------------
+// UPLOAD SINGLE IMAGE (CORE)
+// -------------------------------
 const uploadProductImage = async (file) => {
-  // 1. Keep the original extension (jpg, png, etc.)
-  const fileExt = file.originalname.split('.').pop();
-  const fileName = `products/${Date.now()}-${Math.floor(Math.random() * 1000)}.${fileExt}`;
+  const fileExt = file.originalname.split(".").pop();
+
+  const fileName = `products/${Date.now()}-${Math.random()
+    .toString(36)
+    .substring(2, 10)}.${fileExt}`;
 
   const { data, error } = await supabase.storage
-    .from('FreshyFoodFactory')
+    .from("FreshyFoodFactory")
     .upload(fileName, file.buffer, {
-      contentType: file.mimetype, // Use actual mimetype from multer
-      cacheControl: '3600',
-      upsert: false 
+      contentType: file.mimetype,
+      cacheControl: "3600",
+      upsert: false,
     });
 
   if (error) throw error;
 
   const { data: publicUrlData } = supabase.storage
-    .from('FreshyFoodFactory')
+    .from("FreshyFoodFactory")
     .getPublicUrl(fileName);
 
-  return publicUrlData.publicUrl; 
+  return {
+    url: publicUrlData.publicUrl,
+    path: fileName, // IMPORTANT for deletion later
+  };
 };
 
+// -------------------------------
+// UPLOAD MULTIPLE IMAGES
+// -------------------------------
+const uploadMultipleProductImages = async (files = []) => {
+  if (!files.length) return [];
 
+  const uploadPromises = files.map((file) =>
+    uploadProductImage(file)
+  );
+
+  return Promise.all(uploadPromises);
+};
+
+// -------------------------------
+// SAFE PATH EXTRACTOR
+// -------------------------------
+const extractPathFromUrl = (fullUrl) => {
+  try {
+    const bucketPart = "FreshyFoodFactory/";
+
+    if (!fullUrl.includes(bucketPart)) return null;
+
+    return fullUrl.split(bucketPart)[1];
+  } catch (err) {
+    console.error("URL parsing error:", err);
+    return null;
+  }
+};
+
+// -------------------------------
+// DELETE SINGLE IMAGE
+// -------------------------------
 const deleteProductImage = async (fullUrl) => {
   try {
     if (!fullUrl) return;
 
-    // Extract the path after the bucket name
-    // Example: https://xyz.supabase.co/storage/v1/object/public/FreshyFoodFactory/products/123.png
-    // We need: "products/123.png"
-    const path = fullUrl.split('FreshyFoodFactory/')[1];
+    const path = extractPathFromUrl(fullUrl);
+    if (!path) return;
 
-    if (path) {
-      const { error } = await supabase.storage
-        .from('FreshyFoodFactory')
-        .remove([path]); // .remove() expects an array of paths
+    const { error } = await supabase.storage
+      .from("FreshyFoodFactory")
+      .remove([path]);
 
-      if (error) {
-        console.error('Supabase deletion error:', error.message);
-      }
+    if (error) {
+      console.error("Supabase deletion error:", error.message);
     }
   } catch (err) {
-    console.error('Error parsing URL for deletion:', err);
+    console.error("Delete error:", err);
   }
 };
 
-module.exports = { uploadProductImage, deleteProductImage };
+// -------------------------------
+// DELETE MULTIPLE IMAGES
+// -------------------------------
+const deleteMultipleProductImages = async (urls = []) => {
+  try {
+    if (!urls.length) return;
 
+    const paths = urls
+      .map(extractPathFromUrl)
+      .filter(Boolean);
+
+    if (!paths.length) return;
+
+    const { error } = await supabase.storage
+      .from("FreshyFoodFactory")
+      .remove(paths);
+
+    if (error) {
+      console.error("Batch delete error:", error.message);
+    }
+  } catch (err) {
+    console.error("Batch delete error:", err);
+  }
+};
+
+module.exports = {
+  uploadProductImage,
+  uploadMultipleProductImages,
+  deleteProductImage,
+  deleteMultipleProductImages,
+};

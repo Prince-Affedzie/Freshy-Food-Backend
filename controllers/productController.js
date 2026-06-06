@@ -2,1372 +2,687 @@ const Product = require('../model/Product');
 const asyncHandler = require('express-async-handler');
 const mongoose = require('mongoose');
 const slugify = require('slugify');
-const cloudinary = require('../Utils/cloudinaryConfig')
 const redis = require("../config/redis");
 const Vendor = require('../model/Vendor');
-const { uploadProductImage, deleteProductImage} = require('../config/supabaseS3')
+const { 
+  uploadMultipleProductImages, 
+  deleteMultipleProductImages 
+} = require('../config/supabaseS3');
 
-// Helper function to generate slug
 const generateSlug = (name) => {
-  return slugify(name, {
-    lower: true,
-    strict: true,
-    trim: true
-  });
+  return slugify(name, { lower: true, strict: true, trim: true });
 };
 
-// @desc    Get all products with filtering
+const invalidateProductCache = async () => {
+  try {
+    const keys = await redis.keys("products:*");
+    if (keys.length) await redis.del(keys);
+  } catch (err) {
+    console.log("Cache invalidation error:", err.message);
+  }
+};
+
+const VALID_CATEGORIES = [
+  "electronics",
+  "phones and tablets",
+  "computers and laptops",
+  "gaming",
+  "fashion",
+  "books-course-materials",
+  "hostel-items",
+  "appliances",
+  "furniture",
+  "beauty and grooming",
+  "sports and fitness",
+  "accessories",
+  "food and drinks",
+  "services",
+  "other",
+];
+
+const VALID_SUBCATEGORIES = [
+  "headphones-earbuds", "speakers", "chargers-cables", "power-banks",
+  "smartwatches", "cameras", "other-electronics",
+  "smartphones", "tablets", "ipads", "phone-cases", "screen-protectors",
+  "other-phone-accessories",
+  "laptops", "desktops", "monitors", "keyboards", "mouse",
+  "laptop-bags", "software", "other-computer-accessories",
+  "consoles", "games", "controllers", "gaming-accessories",
+  "men-clothing", "women-clothing", "unisex-clothing", "shoes", "bags",
+  "watches", "jewelry", "other-fashion",
+  "textbooks", "course-notes", "past-questions", "stationery",
+  "novels", "other-books",
+  "bedding", "kitchenware", "cleaning-supplies", "storage",
+  "lighting", "other-hostel",
+  "fans", "heaters", "irons", "kettles", "blenders", "microwaves",
+  "other-appliances",
+  "chairs", "tables-desks", "beds-mattresses", "shelves", "other-furniture",
+  "skincare", "makeup", "hair-care", "perfumes", "nail-care", "other-beauty",
+  "sports-equipment", "gym-gear", "activewear", "other-sports",
+  "phone-accessories", "laptop-accessories", "fashion-accessories", "other-accessories",
+  "snacks", "drinks", "homemade-meals", "baked-goods", "other-food",
+  "tutoring", "graphic-design", "photography", "printing-photocopy",
+  "laundry", "barbering-hairdressing", "tech-repairs", "other-services",
+  "miscellaneous",
+];
+
+// @desc    Get all products with filtering, search, sorting, pagination
 // @route   GET /api/products
 // @access  Public
 const getAllProducts = asyncHandler(async (req, res) => {
+  const {
+    category, subcategory, search, minPrice, maxPrice, campus, condition,
+    negotiable, sort = "newest", page = 1, limit = 20
+  } = req.query;
+
+  try{
+
+  const cacheKey = `products:${JSON.stringify(req.query)}`;
+
   try {
-    const {
-      category,
-      search,
-      minPrice,
-      maxPrice,
-      isAvailable,
-      sort = "name",
-      page = 1,
-      limit = 20
-    } = req.query;
-    console.log(req.query)
-
-    // Dynamic cache key based on query params
-    const cacheKey = `products:${JSON.stringify(req.query)}`;
-
-    // Check Redis cache first
-    try {
-      const cachedData = await redis.get(cacheKey);
-      if (cachedData) {
-        return res.status(200).json(JSON.parse(cachedData));
-      }
-    } catch (err) {
-      console.log("Redis read error:", err.message);
-    }
-
-    // Build query object
-    let query = {};
-
-    // Category filter
-    if (category) {
-      if (category === "all") {
-      } else if (category === "vegetables") {
-        query.category = { $in: ["vegetable", "herb", "tuber"] };
-      } else if (category === "fruits") {
-        query.category = "fruit";
-      } else if (category === "staples") {
-        query.category = { $in: ["staple", "tuber"] };
-      } else {
-        query.category = category;
-      }
-    }
-
-    // Search filter
-    if (search) {
-      query.$or = [
-        { name: { $regex: search, $options: "i" } },
-        { description: { $regex: search, $options: "i" } }
-      ];
-    }
-
-    // Price filter
-    if (minPrice || maxPrice) {
-      query.price = {};
-      if (minPrice) query.price.$gte = Number(minPrice);
-      if (maxPrice) query.price.$lte = Number(maxPrice);
-    }
-
-    // Market filter (by market_name inside vendor)
-   if (req.query.market) {
-    
-    const vendors = await Vendor.find({ market_name: req.query.market }).select('_id');
-    const vendorIds = vendors.map(v => v._id);
-    query.vendor = { $in: vendorIds };
-   }
-
-    // Availability filter
-    if (isAvailable !== undefined) {
-      query.isAvailable = isAvailable === "true";
-    }
-
-    // Sorting
-    let sortOption = {};
-    switch (sort) {
-      case "price-asc":
-        sortOption = { price: 1 };
-        break;
-      case "price-desc":
-        sortOption = { price: -1 };
-        break;
-      case "newest":
-        sortOption = { createdAt: -1 };
-        break;
-      case "stock-desc":
-        sortOption = { countInStock: -1 };
-        break;
-      case "name-desc":
-        sortOption = { name: -1 };
-        break;
-      default:
-        sortOption = { name: 1 };
-    }
-
-    // Pagination
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
-    const skip = (pageNum - 1) * limitNum;
-
-    // Fetch products
-    //.populate('vendor','market_name location')
-    const [products, total] = await Promise.all([
-      Product.find(query)
-        .populate('vendor','market_name location')
-        .sort(sortOption)
-        .skip(skip)
-        .limit(limitNum)
-        .select("-__v"),
-      Product.countDocuments(query)
-    ]);
-
-    // Transform for frontend
-    const transformedProducts = products.map(product => ({
-      id: product._id,
-      name: product.name,
-      slug: product.slug,
-      category: product.category,
-      categoryDisplay: getCategoryDisplay(product.category),
-      image: product.image,
-      price: product.price,
-      tags: product.tags,
-      priceDisplay: formatPrice(product.price),
-      unit: product.unit,
-      unitDisplay: getUnitDisplay(product.unit),
-      countInStock: product.countInStock,
-      stockStatus: getStockStatus(product.countInStock),
-      isAvailable: product.isAvailable,
-      description: product.description,
-      isLowStock: product.countInStock <= 10 && product.countInStock > 0,
-      isOutOfStock: product.countInStock === 0,
-      inStock: product.countInStock > 0,
-      market_name:product.vendor.market_name,
-      location:product.vendor.location,
-      createdAt: product.createdAt,
-      updatedAt: product.updatedAt
-    }));
-
-    // Pagination metadata
-    const totalPages = Math.ceil(total / limitNum);
-    const hasNextPage = pageNum < totalPages;
-    const hasPrevPage = pageNum > 1;
-
-    const response = {
-      success: true,
-      count: transformedProducts.length,
-      total,
-      pagination: {
-        currentPage: pageNum,
-        totalPages,
-        limit: limitNum,
-        hasNextPage,
-        hasPrevPage,
-        nextPage: hasNextPage ? pageNum + 1 : null,
-        prevPage: hasPrevPage ? pageNum - 1 : null
-      },
-      filters: {
-        category: category || "all",
-        search: search || "",
-        minPrice: minPrice || null,
-        maxPrice: maxPrice || null,
-        isAvailable: isAvailable || null,
-        sort
-      },
-      data: transformedProducts
-    };
-
-    // Store in Redis cache (1 hour TTL)
-    try {
-      await redis.set(cacheKey, JSON.stringify(response), "EX", 3600);
-    } catch (err) {
-      console.log("Redis write error:", err.message);
-    }
-
-    res.status(200).json(response);
-
-  } catch (error) {
-    console.log(error)
-    res.status(500).json({
-      success: false,
-      message: "Error fetching products",
-      error: error.message
-    });
+    const cached = await redis.get(cacheKey);
+    if (cached) return res.status(200).json(JSON.parse(cached));
+  } catch (err) {
+    console.log("Redis read error:", err.message);
   }
+
+  const query = { isAvailable: true };
+
+  if (category) query.category = category;
+  if (subcategory) query.subcategory = subcategory;
+  if (campus) query.campus = campus;
+  if (condition) query.condition = condition;
+  if (negotiable !== undefined) query.negotiable = negotiable === 'true';
+
+  if (search) {
+    query.$or = [
+      { name: { $regex: search, $options: "i" } },
+      { description: { $regex: search, $options: "i" } },
+      { brand: { $regex: search, $options: "i" } }
+    ];
+  }
+
+  if (minPrice || maxPrice) {
+    query.price = {};
+    if (minPrice) query.price.$gte = Number(minPrice);
+    if (maxPrice) query.price.$lte = Number(maxPrice);
+  }
+
+  const sortOptions = {
+    "newest": { createdAt: -1 },
+    "oldest": { createdAt: 1 },
+    "price-asc": { price: 1 },
+    "price-desc": { price: -1 },
+    "popular": { views: -1 },
+    "rating": { rating: -1 }
+  };
+
+  const pageNum = Math.max(parseInt(page) || 1, 1);
+  const limitNum = Math.min(parseInt(limit) || 20, 50);
+  const skip = (pageNum - 1) * limitNum;
+
+  const [products, total] = await Promise.all([
+    Product.find(query)
+      .populate('vendor', 'name phone')
+      .sort(sortOptions[sort] || sortOptions.newest)
+      .skip(skip)
+      .limit(limitNum)
+      .select("-__v"),
+    Product.countDocuments(query)
+  ]);
+
+  console.log(products)
+
+  const totalPages = Math.ceil(total / limitNum);
+
+  const response = {
+    success: true,
+    count: products.length,
+    total,
+    pagination: {
+      currentPage: pageNum,
+      totalPages,
+      limit: limitNum,
+      hasNextPage: pageNum < totalPages,
+      hasPrevPage: pageNum > 1
+    },
+    data: products
+  };
+
+  try {
+    await redis.set(cacheKey, JSON.stringify(response), "EX", 600);
+  } catch (err) {
+    console.log("Redis write error:", err.message);
+  }
+
+  res.status(200).json(response);
+}catch(err){
+  console.log(err)
+  res.status(500).json({message:"Internal server error"})
+}
 });
 
-
-
-const getProductsByTag = async (req, res) => {
-  try {
-    const {tag} = req.params;
-
-    const products = await Product.find({
-      tags: tag,
-      isAvailable: true
-    })
-    .populate('vendor','market_name location')
-    .sort({createdAt:-1});
-    
-
-    res.status(200).json({
-      success: true,
-      count: products.length,
-      data: products
-    });
-
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({
-      success: false,
-      message: "Server error while fetching products by tag"
-    });
-  }
-};
-
-
-// @desc    Get single product by ID or slug
-// @route   GET /api/products/:identifier
+// @desc    Get single product by ID
+// @route   GET /api/products/:id
 // @access  Public
 const getProductById = asyncHandler(async (req, res) => {
-  try {
-    const { identifier } = req.params;
-    
-    let product;
-    
-    // Check if identifier is a valid ObjectId
-    
-    product = await Product.findById(identifier).populate('vendor','market_name location');
-    /*console.log(product)
-    */
-    
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
-    }
+  const product = await Product.findById(req.params.id)
+    .populate('vendor', '_id name phone rating')
+    .populate('reviews.user', 'name avatar');
 
-    // Get related products (same category)
-    const relatedProducts = await Product.find({
-      _id: { $ne: product._id },
-      category: product.category,
-      isAvailable: true
-    })
-    .limit(4)
-    .select('name slug image price unit countInStock');
-
-    const response = {
-      success: true,
-      data: {
-        id: product._id,
-        name: product.name,
-        slug: product.slug,
-        category: product.category,
-        tags: product.tags,
-        categoryDisplay: getCategoryDisplay(product.category),
-        image: product.image,
-        price: product.price,
-        priceDisplay: formatPrice(product.price),
-        unit: product.unit,
-        unitDisplay: getUnitDisplay(product.unit),
-        countInStock: product.countInStock,
-        stockStatus: getStockStatus(product.countInStock),
-        isAvailable: product.isAvailable,
-        description: product.description,
-        nutritionalInfo: product.nutritionalInfo || null,
-        storageTips: product.storageTips || '',
-        shelfLifeDays: product.shelfLifeDays || 7,
-        isLowStock: product.countInStock <= 10 && product.countInStock > 0,
-        isOutOfStock: product.countInStock === 0,
-        inStock: product.countInStock > 0,
-        tags: product.tags || [],
-        seasonality: product.seasonality || [],
-        isInSeason: checkIfInSeason(product.seasonality),
-        createdAt: product.createdAt,
-        updatedAt: product.updatedAt,
-        market_name:product.vendor.market_name,
-        location:product.vendor.location,
-        relatedProducts: relatedProducts.map(p => ({
-          id: p._id,
-          name: p.name,
-          slug: p.slug,
-          image: p.image,
-          price: p.price,
-          priceDisplay: formatPrice(p.price),
-          unit: p.unit,
-          countInStock: p.countInStock,
-          inStock: p.countInStock > 0
-        }))
-      }
-    };
-   
-    res.status(200).json(response);
-  } catch (error) {
-    console.log(error)
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching product',
-      error: error.message
-    });
+  if (!product) {
+    return res.status(404).json({ success: false, message: 'Product not found' });
   }
+
+  product.views = (product.views || 0) + 1;
+  await product.save();
+
+  const relatedProducts = await Product.find({
+    _id: { $ne: product._id },
+    category: product.category,
+    campus: product.campus,
+    isAvailable: true
+  })
+    .limit(6)
+    .select('name images price condition negotiable category')
+    .sort({ createdAt: -1 });
+
+  res.status(200).json({
+    success: true,
+    data: { product, relatedProducts }
+  });
 });
 
-// @desc    Get products by category
+// @desc    Get products by category with optional subcategory filter
 // @route   GET /api/products/category/:category
 // @access  Public
 const getProductsByCategory = asyncHandler(async (req, res) => {
-  try {
-    const { category } = req.params;
-    const { sort = "name", limit = 50, page = 1 } = req.query;
+  const { category } = req.params;
+  console.log(category)
+  console.log("I'm receving request")
+  const { subcategory, campus, sort = "newest", page = 1, limit = 20 } = req.query;
+  try{
 
-    const normalizedCategory = category.toLowerCase().trim();
-
-    const cacheKey = `category_products:${normalizedCategory}:${JSON.stringify(req.query)}`;
-
-    // Check Redis Cache
-    try {
-      const cachedData = await redis.get(cacheKey);
-      if (cachedData) {
-        return res.status(200).json(JSON.parse(cachedData));
-      }
-    } catch (err) {
-      console.log("Redis read error:", err.message);
-    }
-
-    const categoryMappings = {
-      vegetable: ["vegetable", "vegetables", "veg", "veggies"],
-      fruit: ["fruit", "fruits"],
-      staple: ["staple", "staples", "grain", "grains", "cereal"],
-      herb: ["herb", "herbs", "spice", "spices"],
-      tuber: ["tuber", "tubers", "root", "roots"],
-      other: ["other", "others", "misc", "miscellaneous"],
-      grain: ["grain"],
-      cereal: ["cereal"],
-      meat: ["meat"],
-      "frozen-food": ["frozen-food"],
-      poultry: ["poultry"],
-      seafood: ["seafood"],
-      spice: ["spice"]
-    };
-
-    let standardizedCategory = null;
-
-    for (const [standard, variations] of Object.entries(categoryMappings)) {
-      if (variations.includes(normalizedCategory)) {
-        standardizedCategory = standard;
-        break;
-      }
-    }
-
-    if (
-      !standardizedCategory &&
-      Object.keys(categoryMappings).includes(normalizedCategory)
-    ) {
-      standardizedCategory = normalizedCategory;
-    }
-
-    if (!standardizedCategory) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid category",
-        validCategories: Object.keys(categoryMappings),
-        acceptedVariations: categoryMappings
-      });
-    }
-
-    let sortOption = {};
-    switch (sort) {
-      case "price-asc":
-        sortOption = { price: 1 };
-        break;
-      case "price-desc":
-        sortOption = { price: -1 };
-        break;
-      case "stock-desc":
-        sortOption = { countInStock: -1 };
-        break;
-      case "newest":
-        sortOption = { createdAt: -1 };
-        break;
-      case "popular":
-        sortOption = { "reviews.rating": -1 };
-        break;
-      default:
-        sortOption = { name: 1 };
-    }
-
-    const limitValue = parseInt(limit) || 50;
-    const pageValue = Math.max(parseInt(page) || 1, 1);
-    const skip = (pageValue - 1) * limitValue;
-
-    const categoryQuery = {
-      category: { $regex: new RegExp(`^${standardizedCategory}$`, "i") },
-      isAvailable: true
-    };
-    
-    const products = await Product.find(categoryQuery)
-      .populate('vendor','market_name location')
-      .sort(sortOption)
-      .skip(skip)
-      .limit(limitValue)
-      .select(
-        "name slug image price unit countInStock description category createdAt updatedAt"
-      );
-
-    const totalProducts = await Product.countDocuments(categoryQuery);
-
-    const totalPages = Math.ceil(totalProducts / limitValue);
-    const hasNextPage = pageValue < totalPages;
-    const hasPrevPage = pageValue > 1;
-
-    const categoryProducts = await Product.find(categoryQuery).select(
-      "price countInStock"
-    );
-
-    const categoryStats = {
-      total: categoryProducts.length,
-      inStock: categoryProducts.filter(p => p.countInStock > 0).length,
-      outOfStock: categoryProducts.filter(p => p.countInStock === 0).length,
-      lowStock: categoryProducts.filter(
-        p => p.countInStock <= 10 && p.countInStock > 0
-      ).length,
-      priceRange:
-        categoryProducts.length > 0
-          ? {
-              min: Math.min(...categoryProducts.map(p => p.price)),
-              max: Math.max(...categoryProducts.map(p => p.price)),
-              avg: parseFloat(
-                (
-                  categoryProducts.reduce((sum, p) => sum + p.price, 0) /
-                  categoryProducts.length
-                ).toFixed(2)
-              )
-            }
-          : null
-    };
-
-    const getCategoryDisplay = cat => {
-      const displayNames = {
-        vegetable: "Vegetables",
-        fruit: "Fruits",
-        staple: "Staples",
-        herb: "Herbs & Spices",
-        tuber: "Roots & Tubers",
-        other: "Other Products"
-      };
-      return displayNames[cat] || cat.charAt(0).toUpperCase() + cat.slice(1);
-    };
-
-    const getUnitDisplay = unit => {
-      const unitMap = {
-        kg: "Kilogram",
-        g: "Gram",
-        piece: "Piece",
-        bunch: "Bunch",
-        pack: "Pack",
-        basket: "Basket"
-      };
-      return unitMap[unit] || unit;
-    };
-
-    const response = {
-      success: true,
-      category: {
-        id: standardizedCategory,
-        name: standardizedCategory,
-        displayName: getCategoryDisplay(standardizedCategory),
-        originalRequest: category,
-        normalizedRequest: normalizedCategory
-      },
-      stats: categoryStats,
-      pagination: {
-        currentPage: pageValue,
-        totalPages,
-        totalProducts,
-        productsPerPage: limitValue,
-        hasNextPage,
-        hasPrevPage,
-        nextPage: hasNextPage ? pageValue + 1 : null,
-        prevPage: hasPrevPage ? pageValue - 1 : null
-      },
-      count: products.length,
-      data: products.map(p => ({
-        id: p._id,
-        name: p.name,
-        slug: p.slug,
-        image: p.image,
-        price: p.price,
-        priceDisplay: `GH₵ ${p.price.toFixed(2)}`,
-        unit: p.unit,
-        unitDisplay: getUnitDisplay(p.unit),
-        countInStock: p.countInStock,
-        inStock: p.countInStock > 0,
-        isLowStock: p.countInStock <= 10 && p.countInStock > 0,
-        location:p.vendor.location,
-        market_name:p.vendor.market_name,
-         description: p.description
-          ? p.description.substring(0, 100) + "..."
-          : null,
-        category: p.category,
-        createdAt: p.createdAt,
-        updatedAt: p.updatedAt
-      }))
-    };
-
-    // Save to Redis (1 hour TTL)
-    try {
-      await redis.set(cacheKey, JSON.stringify(response), "EX", 3600);
-    } catch (err) {
-      console.log("Redis write error:", err.message);
-    }
-
-    res.status(200).json(response);
-
-  } catch (error) {
-    console.error("Error in getProductsByCategory:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error fetching products by category",
-      error: error.message
-    });
+  if (!VALID_CATEGORIES.includes(category)) {
+   
+    return res.status(400).json({ success: false, message: 'Invalid category', validCategories: VALID_CATEGORIES });
   }
-});
 
+  const cacheKey = `products:category:${category}:${subcategory || 'all'}:${campus || 'all'}:${sort}:${page}:${limit}`;
 
-const createProduct = asyncHandler(async (req, res) => {
+  /*try {
+    const cached = await redis.get(cacheKey);
+    if (cached) return res.status(200).json(JSON.parse(cached));
+  } catch (err) {
+    console.log("Redis read error:", err.message);
+  }*/
+
+  const query = { category, isAvailable: true };
+  if (subcategory) query.subcategory = subcategory;
+  if (campus) query.campus = campus;
+
+  const sortOptions = {
+    "newest": { createdAt: -1 },
+    "price-asc": { price: 1 },
+    "price-desc": { price: -1 },
+    "popular": { views: -1 }
+  };
+
+  const pageNum = Math.max(parseInt(page) || 1, 1);
+  const limitNum = Math.min(parseInt(limit) || 20, 50);
+  const skip = (pageNum - 1) * limitNum;
+  console.log(query)
+
+  const [products, total] = await Promise.all([
+    Product.find(query)
+      .populate('vendor', 'name phone')
+      .sort(sortOptions[sort] || sortOptions.newest)
+      
+      .limit(limitNum)
+      .select("-__v"),
+    Product.countDocuments(query)
+  ]);
+
+  const totalPages = Math.ceil(total / limitNum);
+
+  const response = {
+    success: true,
+    category,
+    subcategory: subcategory || null,
+    count: products.length,
+    total,
+    pagination: {
+      currentPage: pageNum,
+      totalPages,
+      limit: limitNum,
+      hasNextPage: pageNum < totalPages,
+      hasPrevPage: pageNum > 1
+    },
+    data: products
+  };
+
   try {
-    console.log("Receiving Request")
-    console.log(req.body)
-    const {
-      name,
-      category,
-      price,
-      unit,
-      tags,
-      countInStock,
-      description,
-      isAvailable
-    } = req.body;
-
-    // Validate required fields
-    if (!name || !category || !price || !unit) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide name, category, price, and unit'
-      });
-    }
-
-    // Check if image file was uploaded
-    if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please upload a product image'
-      });
-    }
-
-    // Validate category
-    const validCategories = ['vegetable', 'fruit', 'staple', 'herb', 'other', 'tuber','grain','cereal','meat','frozen-food','poultry','seafood','spice'];
-    if (!validCategories.includes(category)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid category',
-        validCategories
-      });
-    }
-
-    // Validate unit
-    const validUnits = ['kg', 'g', 'piece', 'pieces', 'bunch', 'bag', 'pack', 'basket', 'olonka'];
-    if (!validUnits.includes(unit)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid unit',
-        validUnits
-      });
-    }
-
-    // Validate price
-    const priceNumber = parseFloat(price);
-    if (isNaN(priceNumber) || priceNumber <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Price must be a number greater than 0'
-      });
-    }
-
-    // Validate stock
-    const stockCount = countInStock ? parseInt(countInStock) : 0;
-    if (isNaN(stockCount) || stockCount < 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Stock count must be a non-negative number'
-      });
-    }
-
-    // Generate slug
-    const slug = generateSlug(name);
-    
-    // Check if slug already exists
-    const existingProduct = await Product.findOne({ slug });
-    let finalSlug = slug;
-    if (existingProduct) {
-      // Add timestamp to make slug unique
-      finalSlug = `${slug}-${Date.now()}`;
-    }
-
-    let imageUrl = '';
-
-   try {
-  // Use the helper you just created
-  // req.file comes from your multer middleware
-    if (req.file) {
-    imageUrl = await uploadProductImage(req.file);
-    } else {
-     return res.status(400).json({
-      success: false,
-      message: 'Please upload a product image',
-    });
+    await redis.set(cacheKey, JSON.stringify(response), "EX", 600);
+  } catch (err) {
+    console.log("Redis write error:", err.message);
   }
-} catch (uploadError) {
-  console.error('Supabase upload error:', uploadError);
-  return res.status(500).json({
-    success: false,
-    message: 'Failed to upload image to NovanMart storage',
-    error: uploadError.message
-  });
+  console.log(response.data)
+
+  res.status(200).json(response);
+}catch(err){
+  console.log(err)
+  res.status(500).json({message:"Internal server error"})
 }
 
-    // Create product data object (only fields from schema)
-    const vendor =  await Vendor.findOne({user:req.user.id})
-    const productData = {
+});
+
+// @desc    Get subcategories for a category
+// @route   GET /api/products/subcategories/:category
+// @access  Public
+const getSubcategoriesByCategory = asyncHandler(async (req, res) => {
+  const { category } = req.params;
+
+  if (!VALID_CATEGORIES.includes(category)) {
+    return res.status(400).json({ success: false, message: 'Invalid category' });
+  }
+
+  const subcategories = await Product.distinct('subcategory', { category, isAvailable: true });
+
+  res.status(200).json({
+    success: true,
+    category,
+    count: subcategories.length,
+    data: subcategories.filter(Boolean)
+  });
+});
+
+// @desc    Get products by campus
+// @route   GET /api/products/campus/:campus
+// @access  Public
+const getProductsByCampus = asyncHandler(async (req, res) => {
+  const { campus } = req.params;
+  const { category, subcategory, sort = "newest", page = 1, limit = 20 } = req.query;
+
+  const query = { campus, isAvailable: true };
+  if (category) query.category = category;
+  if (subcategory) query.subcategory = subcategory;
+
+  const sortOptions = {
+    "newest": { createdAt: -1 },
+    "price-asc": { price: 1 },
+    "price-desc": { price: -1 },
+    "popular": { views: -1 }
+  };
+
+  const pageNum = Math.max(parseInt(page) || 1, 1);
+  const limitNum = Math.min(parseInt(limit) || 20, 50);
+  const skip = (pageNum - 1) * limitNum;
+
+  const [products, total] = await Promise.all([
+    Product.find(query)
+      .populate('vendor', 'name phone')
+      .sort(sortOptions[sort] || sortOptions.newest)
+      .skip(skip)
+      .limit(limitNum)
+      .select("-__v"),
+    Product.countDocuments(query)
+  ]);
+
+  const totalPages = Math.ceil(total / limitNum);
+
+  res.status(200).json({
+    success: true,
+    campus,
+    count: products.length,
+    total,
+    pagination: {
+      currentPage: pageNum,
+      totalPages,
+      limit: limitNum,
+      hasNextPage: pageNum < totalPages,
+      hasPrevPage: pageNum > 1
+    },
+    data: products
+  });
+});
+
+// @desc    Get products by tag
+// @route   GET /api/products/tag/:tag
+// @access  Public
+const getProductsByTag = asyncHandler(async (req, res) => {
+  const { tag } = req.params;
+  const validTags = ["featured", "urgent-sale", "popular", "discounted", "new-arrival", "student-favorite"];
+
+  if (!validTags.includes(tag)) {
+    return res.status(400).json({ success: false, message: 'Invalid tag', validTags });
+  }
+
+  const products = await Product.find({ tags: tag, isAvailable: true })
+    .populate('vendor', 'name phone')
+    .sort({ createdAt: -1 })
+    .limit(20)
+    .select("-__v");
+
+  res.status(200).json({ success: true, count: products.length, data: products });
+});
+
+// @desc    Create product
+// @route   POST /api/products
+// @access  Private/Vendor
+const createProduct = asyncHandler(async (req, res) => {
+  try {
+    const {
+      name, category, subcategory, brand, price, negotiable, condition,
+      description, campus, location, tags, countInStock
+    } = req.body;
+
+    if (!name || !category || !price || !campus || !location?.campusArea) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name, category, price, campus, and campus area are required'
+      });
+    }
+
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least one product image is required'
+      });
+    }
+
+    const vendor = await Vendor.findOne({ user: req.user.id });
+    if (!vendor) {
+      return res.status(404).json({ success: false, message: 'Vendor profile not found' });
+    }
+
+    if (!VALID_CATEGORIES.includes(category)) {
+      return res.status(400).json({ success: false, message: 'Invalid category', validCategories: VALID_CATEGORIES });
+    }
+
+    if (subcategory && !VALID_SUBCATEGORIES.includes(subcategory)) {
+      return res.status(400).json({ success: false, message: 'Invalid subcategory', validSubcategories: VALID_SUBCATEGORIES });
+    }
+
+    const priceNum = parseFloat(price);
+    if (isNaN(priceNum) || priceNum < 0) {
+      return res.status(400).json({ success: false, message: 'Price must be a valid non-negative number' });
+    }
+
+    let slug = generateSlug(name);
+    const existingSlug = await Product.findOne({ slug });
+    if (existingSlug) slug = `${slug}-${Date.now()}`;
+
+    let images = [];
+
+    try {
+      const result = await uploadMultipleProductImages(req.files);
+      images = result.map(r => r.url);
+    } catch (uploadError) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to upload images',
+        error: uploadError.message
+      });
+    }
+
+    const product = await Product.create({
       name,
-      slug: finalSlug,
+      slug,
       category,
-      image: imageUrl,
-     
-      price: priceNumber,
-      unit,
-      tags:tags,
-      countInStock: stockCount,
+      subcategory: subcategory || undefined,
+      brand: brand || '',
+      images,
+      price: priceNum,
+      negotiable: negotiable === 'true' || negotiable === true,
+      condition: condition || 'good',
       description: description || '',
-      isAvailable: isAvailable !== undefined ? (isAvailable === 'true' || isAvailable === true) : true,
-      vendor:vendor._id,
-    };
-
-    // Create product
-    const product = await Product.create(productData);
-    vendor.products.push(product)
-    await vendor.save()
-
-    const productKeys = await redis.keys("products:*");
-    const categoryKeys = await redis.keys("category_products:*");
-
-    const keys = [...productKeys, ...categoryKeys];
-
-    if (keys.length) {
-     await redis.del(keys);
-    }
-
-    res.status(201).json({
-      success: true,
-      message: 'Product created successfully',
-      data: {
-        id: product._id,
-        name: product.name,
-        slug: product.slug,
-        category: product.category,
-        image: product.image,
-        price: product.price,
-        unit: product.unit,
-        countInStock: product.countInStock,
-        isAvailable: product.isAvailable,
-        description: product.description,
-        cloudinaryId: product.cloudinaryId,
-        createdAt: product.createdAt
-      }
+      campus,
+      location,
+      tags: tags || [],
+      countInStock: parseInt(countInStock) || 1,
+      vendor: vendor._id,
     });
-  } catch (error) {
-    console.error('Product creation error:', error);
-    
-    // Handle duplicate key error (unique slug)
-    if (error.code === 11000) {
-      return res.status(400).json({
-        success: false,
-        message: 'Product with this name already exists'
-      });
-    }
-    
-    // Handle validation errors
-    if (error.name === 'ValidationError') {
-      const errors = Object.values(error.errors).map(err => err.message);
-      return res.status(400).json({
-        success: false,
-        message: 'Validation error',
-        errors
-      });
-    }
-    
-    res.status(500).json({
-      success: false,
-      message: 'Error creating product',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
-    });
+
+    vendor.products.push(product._id);
+    await vendor.save();
+
+    await invalidateProductCache();
+
+    res.status(201).json({ success: true, message: 'Product listed successfully', data: product });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 
+// @desc    Update product
+// @route   PUT /api/products/:id
+// @access  Private/Vendor (owner)
 const updateProduct = asyncHandler(async (req, res) => {
-  console.log(req.body)
-  try {
-    const productId = req.params.id;
-    const updates = req.body;
+  const product = await Product.findById(req.params.id);
 
-    // Validate ObjectId
-    if (!mongoose.Types.ObjectId.isValid(productId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid product ID format'
-      });
-    }
-
-    // Find product
-    const product = await Product.findById(productId);
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
-    }
-
-    // Handle image upload if new image is provided
-    if (req.file) {
-      // 1. Delete the OLD image from Supabase
-      await deleteProductImage(product.image);
-
-      // 2. Upload the NEW image
-      const newImageUrl = await uploadProductImage(req.file);
-       updates.image = newImageUrl;
-     }
-
-    // If name is being updated, generate new slug
-    if (updates.name && updates.name !== product.name) {
-      const newSlug = updates.name
-        .toLowerCase()
-        .replace(/[^\w\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/--+/g, '-')
-        .trim();
-      
-      // Check if new slug exists (different from current)
-      const existingWithSlug = await Product.findOne({ 
-        slug: newSlug,
-        _id: { $ne: productId }
-      });
-      
-      if (existingWithSlug) {
-        return res.status(400).json({
-          success: false,
-          message: 'Product with similar name already exists'
-        });
-      }
-      
-      updates.slug = newSlug;
-    }
-
-    // Validate category if being updated
-    if (updates.category) {
-      const validCategories = ['vegetable', 'fruit', 'staple', 'herb', 'other', 'tuber','grain','cereal','meat','frozen-food','poultry','seafood','spice'];
-      if (!validCategories.includes(updates.category)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid category'
-        });
-      }
-    }
-
-    // Validate unit if being updated
-    if (updates.unit) {
-      const validUnits = ['kg', 'g', 'piece', 'pieces', 'bunch', 'bag', 'pack', 'basket', 'olonka'];
-      if (!validUnits.includes(updates.unit)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid unit'
-        });
-      }
-    }
-
-    // Validate price if being updated
-    if (updates.price) {
-      const priceNumber = parseFloat(updates.price);
-      if (isNaN(priceNumber) || priceNumber <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'Price must be a number greater than 0'
-        });
-      }
-      updates.price = priceNumber;
-    }
-
-    // Validate stock if being updated
-    if (updates.countInStock !== undefined) {
-      const stockCount = parseInt(updates.countInStock);
-      if (isNaN(stockCount) || stockCount < 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'Stock count must be a non-negative number'
-        });
-      }
-      updates.countInStock = stockCount;
-    }
-
-    // Validate isAvailable if being updated
-    if (updates.isAvailable !== undefined) {
-      updates.isAvailable = updates.isAvailable === 'true' || updates.isAvailable === true;
-    }
-
-    // Update product
-    Object.keys(updates).forEach(key => {
-      if (key !== '_id' && key !== 'createdAt' && key !== 'updatedAt') {
-        product[key] = updates[key];
-      }
-    });
-
-    await product.save();
-    const productKeys = await redis.keys("products:*");
-    const categoryKeys = await redis.keys("category_products:*");
-
-    const keys = [...productKeys, ...categoryKeys];
-
-    if (keys.length) {
-     await redis.del(keys);
-    }
-
-
-    res.status(200).json({
-      success: true,
-      message: 'Product updated successfully',
-      data: {
-        id: product._id,
-        name: product.name,
-        slug: product.slug,
-        category: product.category,
-        image: product.image,
-        price: product.price,
-        unit: product.unit,
-        countInStock: product.countInStock,
-        isAvailable: product.isAvailable,
-        description: product.description,
-        cloudinaryId: product.cloudinaryId,
-        updatedAt: product.updatedAt
-      }
-    });
-  } catch (error) {
-    console.error('Product update error:', error);
-    
-    // Handle duplicate key error
-    if (error.code === 11000) {
-      console.log(error)
-      return res.status(400).json({
-        success: false,
-        message: 'Product with this name already exists'
-      });
-    }
-    
-    // Handle validation errors
-    if (error.name === 'ValidationError') {
-      const errors = Object.values(error.errors).map(err => err.message);
-      console.log(error)
-      return res.status(400).json({
-        success: false,
-        message: 'Validation error',
-        errors
-      });
-    }
-    
-    res.status(500).json({
-      success: false,
-      message: 'Error updating product',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
-    });
+  if (!product) {
+    return res.status(404).json({ success: false, message: 'Product not found' });
   }
+
+  const vendor = await Vendor.findOne({ user: req.user.id });
+  if (!vendor || product.vendor.toString() !== vendor._id.toString()) {
+    return res.status(403).json({ success: false, message: 'Not authorized to update this product' });
+  }
+
+  const updatableFields = [
+    'name', 'category', 'subcategory', 'brand', 'price', 'negotiable', 'condition',
+    'description', 'campus', 'location', 'tags', 'countInStock', 'isAvailable'
+  ];
+
+  updatableFields.forEach(field => {
+    if (req.body[field] !== undefined) {
+      product[field] = req.body[field];
+    }
+  });
+
+  if (req.body.category && !VALID_CATEGORIES.includes(req.body.category)) {
+    return res.status(400).json({ success: false, message: 'Invalid category' });
+  }
+
+  if (req.body.subcategory && !VALID_SUBCATEGORIES.includes(req.body.subcategory)) {
+    return res.status(400).json({ success: false, message: 'Invalid subcategory' });
+  }
+
+  if (req.body.name && req.body.name !== product.name) {
+    let newSlug = generateSlug(req.body.name);
+    const existing = await Product.findOne({ slug: newSlug, _id: { $ne: product._id } });
+    if (existing) newSlug = `${newSlug}-${Date.now()}`;
+    product.slug = newSlug;
+  }
+
+  if (req.files && req.files.length > 0) {
+    try {
+      if (product.images?.length) {
+        await deleteMultipleProductImages(product.images);
+      }
+
+      const result = await uploadMultipleProductImages(req.files);
+      product.images = result.map(r => r.url);
+    } catch (uploadError) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to upload new images',
+        error: uploadError.message
+      });
+    }
+  }
+
+  await product.save();
+  await invalidateProductCache();
+
+  res.status(200).json({ success: true, message: 'Product updated', data: product });
 });
 
 // @desc    Delete product
 // @route   DELETE /api/products/:id
-// @access  Private/Admin
+// @access  Private/Vendor (owner) or Admin
 const deleteProduct = asyncHandler(async (req, res) => {
-  try {
-    const productId = req.params.id;
+  const product = await Product.findById(req.params.id);
 
-    // Validate ObjectId
-    if (!mongoose.Types.ObjectId.isValid(productId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid product ID format'
-      });
-    }
-
-    const product = await Product.findById(productId);
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
-    }
-
-    
-    
-    await deleteProductImage(product.image);
-    await product.deleteOne();
-    const productKeys = await redis.keys("products:*");
-    const categoryKeys = await redis.keys("category_products:*");
-
-    const keys = [...productKeys, ...categoryKeys];
-
-    if (keys.length) {
-     await redis.del(keys);
-    }
-
-
-    res.status(200).json({
-      success: true,
-      message: 'Product marked as unavailable'
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error deleting product',
-      error: error.message
-    });
+  if (!product) {
+    return res.status(404).json({ success: false, message: 'Product not found' });
   }
-});
 
-// @desc    Update product stock
-// @route   PATCH /api/products/:id/stock
-// @access  Private/Admin
-const updateProductStock = asyncHandler(async (req, res) => {
-  try {
-    const productId = req.params.id;
-    const { operation, quantity, reason } = req.body;
+  const vendor = await Vendor.findOne({ user: req.user.id });
 
-    // Validate
-    if (!mongoose.Types.ObjectId.isValid(productId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid product ID format'
-      });
-    }
-
-    if (!operation || !['add', 'subtract', 'set'].includes(operation)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Valid operation required: add, subtract, or set'
-      });
-    }
-
-    if (quantity === undefined || quantity < 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Valid quantity required (non-negative)'
-      });
-    }
-
-    const product = await Product.findById(productId);
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: 'Product not found'
-      });
-    }
-
-    let newStock;
-    switch (operation) {
-      case 'add':
-        newStock = product.countInStock + quantity;
-        break;
-      case 'subtract':
-        newStock = product.countInStock - quantity;
-        if (newStock < 0) {
-          return res.status(400).json({
-            success: false,
-            message: `Cannot subtract ${quantity} from ${product.countInStock} stock`
-          });
-        }
-        break;
-      case 'set':
-        newStock = quantity;
-        break;
-    }
-
-    const oldStock = product.countInStock;
-    product.countInStock = newStock;
-    
-    // Auto-update availability based on stock
-    if (newStock === 0) {
-      product.isAvailable = false;
-    } else if (newStock > 0 && !product.isAvailable) {
-      product.isAvailable = true;
-    }
-
-    await product.save();
-
-    // Log stock change (you might want to save to a separate collection)
-    const stockChange = {
-      productId,
-      productName: product.name,
-      oldStock,
-      newStock,
-      operation,
-      quantity,
-      reason: reason || 'Manual update',
-      changedBy: req.user?.id || 'system',
-      changedAt: new Date()
-    };
-
-    // You can save stockChange to a StockHistory collection here
-
-    res.status(200).json({
-      success: true,
-      message: 'Stock updated successfully',
-      data: {
-        id: product._id,
-        name: product.name,
-        oldStock,
-        newStock,
-        operation,
-        quantity,
-        change: newStock - oldStock,
-        isAvailable: product.isAvailable,
-        stockStatus: getStockStatus(newStock),
-        stockChange // For logging
-      }
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error updating stock',
-      error: error.message
-    });
+  if (!vendor || product.vendor.toString() !== vendor._id.toString()) {
+    return res.status(403).json({ success: false, message: 'Not authorized' });
   }
-});
 
-// @desc    Bulk update product availability
-// @route   PATCH /api/products/bulk/availability
-// @access  Private/Admin
-const bulkUpdateAvailability = asyncHandler(async (req, res) => {
-  try {
-    const { productIds, isAvailable } = req.body;
-
-    if (!Array.isArray(productIds) || productIds.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Product IDs array required'
-      });
+  if (product.images?.length) {
+    try {
+      await deleteMultipleProductImages(product.images);
+    } catch (err) {
+      console.log("Image deletion error:", err.message);
     }
-
-    if (isAvailable === undefined) {
-      return res.status(400).json({
-        success: false,
-        message: 'isAvailable status required'
-      });
-    }
-
-    // Validate all IDs
-    const validIds = productIds.filter(id => mongoose.Types.ObjectId.isValid(id));
-    if (validIds.length !== productIds.length) {
-      return res.status(400).json({
-        success: false,
-        message: 'Some product IDs are invalid'
-      });
-    }
-
-    const result = await Product.updateMany(
-      { _id: { $in: validIds } },
-      { isAvailable }
-    );
-
-    res.status(200).json({
-      success: true,
-      message: `${result.modifiedCount} products updated`,
-      data: {
-        totalSelected: validIds.length,
-        updatedCount: result.modifiedCount,
-        isAvailable
-      }
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error in bulk update',
-      error: error.message
-    });
   }
+
+  vendor.products.pull(product._id);
+  await vendor.save();
+  await product.deleteOne();
+  await invalidateProductCache();
+
+  res.status(200).json({ success: true, message: 'Product deleted' });
 });
 
 // @desc    Search products
 // @route   GET /api/products/search/:query
 // @access  Public
 const searchProducts = asyncHandler(async (req, res) => {
-  try {
-    console.log(req.params)
-    console.log("I'm being called")
-    const { query } = req.params;
-    const { limit = 10 } = req.query;
+  const { query } = req.params;
+  const { campus, category, subcategory, limit = 15 } = req.query;
 
-    if (!query || query.trim().length < 2) {
-      return res.status(400).json({
-        success: false,
-        message: 'Search query must be at least 2 characters'
-      });
-    }
+  if (!query || query.trim().length < 2) {
+    return res.status(400).json({ success: false, message: 'Search query must be at least 2 characters' });
+  }
 
-    const products = await Product.find({
-      $or: [
-        { name: { $regex: query, $options: 'i' } },
-        { description: { $regex: query, $options: 'i' } },
-        { tags: { $regex: query, $options: 'i' } }
-      ],
-      isAvailable: true
-    })
+  const searchQuery = {
+    isAvailable: true,
+    $or: [
+      { name: { $regex: query, $options: 'i' } },
+      { description: { $regex: query, $options: 'i' } },
+      { brand: { $regex: query, $options: 'i' } },
+      { category: { $regex: query, $options: 'i' } }
+    ]
+  };
+
+  if (campus) searchQuery.campus = campus;
+  if (category) searchQuery.category = category;
+  if (subcategory) searchQuery.subcategory = subcategory;
+
+  const products = await Product.find(searchQuery)
+    .populate('vendor', 'name phone')
     .limit(parseInt(limit))
-    .select('name slug image price unit countInStock category');
+    .select('name images price condition campus category subcategory')
+    .sort({ createdAt: -1 });
 
-    const suggestions = products.map(p => ({
-      id: p._id,
-      name: p.name,
-      slug: p.slug,
-      image: p.image,
-      price: p.price,
-      priceDisplay: formatPrice(p.price),
-      unit: p.unit,
-      category: p.category,
-      categoryDisplay: getCategoryDisplay(p.category),
-      inStock: p.countInStock > 0
-    }));
-    console.log(suggestions)
-
-    res.status(200).json({
-      success: true,
-      query,
-      count: products.length,
-      suggestions:products
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error searching products',
-      error: error.message
-    });
-  }
+  res.status(200).json({ success: true, query, count: products.length, data: products });
 });
 
-// @desc    Get products dashboard statistics
-// @route   GET /api/products/stats/overview
-// @access  Private/Admin
-const getProductStats = asyncHandler(async (req, res) => {
-  try {
-    // Get total counts
-    const totalProducts = await Product.countDocuments();
-    const availableProducts = await Product.countDocuments({ isAvailable: true });
-    const outOfStockProducts = await Product.countDocuments({ countInStock: 0 });
-    const lowStockProducts = await Product.countDocuments({ 
-      countInStock: { $gt: 0, $lte: 10 } 
-    });
+// @desc    Add/update product review
+// @route   POST /api/products/:id/review
+// @access  Private
+const createProductReview = asyncHandler(async (req, res) => {
+  const { rating, comment } = req.body;
+  const product = await Product.findById(req.params.id);
 
-    // Get category distribution
-    const categoryStats = await Product.aggregate([
-      {
-        $group: {
-          _id: '$category',
-          count: { $sum: 1 },
-          totalStock: { $sum: '$countInStock' },
-          avgPrice: { $avg: '$price' }
-        }
-      },
-      {
-        $sort: { count: -1 }
-      }
-    ]);
-
-    // Get price statistics
-    const priceStats = await Product.aggregate([
-      {
-        $group: {
-          _id: null,
-          avgPrice: { $avg: '$price' },
-          minPrice: { $min: '$price' },
-          maxPrice: { $max: '$price' },
-          totalValue: { $sum: { $multiply: ['$price', '$countInStock'] } }
-        }
-      }
-    ]);
-
-    // Get recently added products
-    const recentProducts = await Product.find()
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .select('name category price countInStock createdAt');
-
-    // Get low stock alert
-    const lowStockAlerts = await Product.find({
-      countInStock: { $gt: 0, $lte: 10 }
-    })
-    .sort({ countInStock: 1 })
-    .limit(10)
-    .select('name category countInStock unit');
-
-    res.status(200).json({
-      success: true,
-      data: {
-        counts: {
-          total: totalProducts,
-          available: availableProducts,
-          outOfStock: outOfStockProducts,
-          lowStock: lowStockProducts,
-          unavailable: totalProducts - availableProducts
-        },
-        categories: categoryStats,
-        pricing: priceStats[0] || {},
-        recent: recentProducts,
-        alerts: {
-          lowStock: lowStockAlerts,
-          count: lowStockAlerts.length
-        },
-        lastUpdated: new Date()
-      }
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching product statistics',
-      error: error.message
-    });
+  if (!product) {
+    return res.status(404).json({ success: false, message: 'Product not found' });
   }
+
+  if (!rating || rating < 1 || rating > 5) {
+    return res.status(400).json({ success: false, message: 'Rating must be between 1 and 5' });
+  }
+
+  const alreadyReviewed = product.reviews.find(
+    r => r.user.toString() === req.user.id
+  );
+
+  if (alreadyReviewed) {
+    alreadyReviewed.rating = rating;
+    alreadyReviewed.comment = comment || alreadyReviewed.comment;
+  } else {
+    product.reviews.push({
+      user: req.user.id,
+      name: req.user.name,
+      rating,
+      comment: comment || ''
+    });
+    product.numReviews = product.reviews.length;
+  }
+
+  product.rating = product.reviews.reduce((acc, r) => acc + r.rating, 0) / product.reviews.length;
+
+  await product.save();
+
+  res.status(200).json({ success: true, message: 'Review saved', rating: product.rating, numReviews: product.numReviews });
 });
 
-// @desc    Get seasonal products
-// @route   GET /api/products/seasonal/current
+// @desc    Toggle favorite product
+// @route   POST /api/products/:id/favorite
+// @access  Private
+const toggleFavorite = asyncHandler(async (req, res) => {
+  const product = await Product.findById(req.params.id);
+
+  if (!product) {
+    return res.status(404).json({ success: false, message: 'Product not found' });
+  }
+
+  product.favorites = (product.favorites || 0) + 1;
+  await product.save();
+
+  res.status(200).json({ success: true, favorites: product.favorites });
+});
+
+// @desc    Get product stats
+// @route   GET /api/products/stats
 // @access  Public
-const getSeasonalProducts = asyncHandler(async (req, res) => {
-  try {
-    const currentMonth = new Date().toLocaleString('en-US', { month: 'short' }).toLowerCase();
-    
-    // If you have seasonality field in your schema
-    // const seasonalProducts = await Product.find({
-    //   seasonality: currentMonth,
-    //   isAvailable: true
-    // })
-    // .limit(12)
-    // .select('name slug image price category unit description');
-    
-    // For now, get featured products or products in season
-    const seasonalProducts = await Product.find({
-      isAvailable: true,
-      category: { $in: ['fruit', 'vegetable'] }
-    })
-    .sort({ createdAt: -1 })
-    .limit(12)
-    .select('name slug image price category unit description countInStock');
+const getProductStats = asyncHandler(async (req, res) => {
+  const [totalProducts, campusStats, categoryStats, conditionStats] = await Promise.all([
+    Product.countDocuments({ isAvailable: true }),
+    Product.aggregate([
+      { $match: { isAvailable: true } },
+      { $group: { _id: '$campus', count: { $sum: 1 } } },
+      { $sort: { count: -1 } }
+    ]),
+    Product.aggregate([
+      { $match: { isAvailable: true } },
+      { $group: { _id: '$category', count: { $sum: 1 }, avgPrice: { $avg: '$price' } } },
+      { $sort: { count: -1 } }
+    ]),
+    Product.aggregate([
+      { $match: { isAvailable: true } },
+      { $group: { _id: '$condition', count: { $sum: 1 } } }
+    ])
+  ]);
 
-    res.status(200).json({
-      success: true,
-      season: getSeasonDisplay(currentMonth),
-      month: currentMonth,
-      count: seasonalProducts.length,
-      data: seasonalProducts.map(p => ({
-        id: p._id,
-        name: p.name,
-        slug: p.slug,
-        image: p.image,
-        price: p.price,
-        priceDisplay: formatPrice(p.price),
-        category: p.category,
-        categoryDisplay: getCategoryDisplay(p.category),
-        unit: p.unit,
-        unitDisplay: getUnitDisplay(p.unit),
-        inSeason: true,
-        description: p.description,
-        inStock: p.countInStock > 0
-      }))
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching seasonal products',
-      error: error.message
-    });
-  }
+  res.status(200).json({
+    success: true,
+    totalProducts,
+    byCampus: campusStats,
+    byCategory: categoryStats,
+    byCondition: conditionStats
+  });
 });
-
-// Helper functions
-const formatPrice = (price) => {
-  return `₵${price.toFixed(2)}`;
-};
-
-const getCategoryDisplay = (category) => {
-  const displays = {
-    vegetable: 'Vegetables',
-    fruit: 'Fruits',
-    staple: 'Staples',
-    herb: 'Herbs',
-    tuber: 'Tubers',
-    other: 'Other'
-  };
-  return displays[category] || category;
-};
-
-const getUnitDisplay = (unit) => {
-  const displays = {
-    kg: 'Kilogram',
-    g: 'Gram',
-    piece: 'Piece',
-    bunch: 'Bunch',
-    bag: 'Bag',
-    pack: 'Pack'
-  };
-  return displays[unit] || unit;
-};
-
-const getStockStatus = (stock) => {
-  if (stock === 0) return 'Out of Stock';
-  if (stock <= 10) return 'Low Stock';
-  return 'In Stock';
-};
-
-const checkIfInSeason = (seasonality) => {
-  if (!seasonality || seasonality.length === 0) return true;
-  const currentMonth = new Date().toLocaleString('en-US', { month: 'short' }).toLowerCase();
-  return seasonality.includes(currentMonth);
-};
-
-const getSeasonDisplay = (month) => {
-  const seasons = {
-    dec: 'Winter', jan: 'Winter', feb: 'Winter',
-    mar: 'Spring', apr: 'Spring', may: 'Spring',
-    jun: 'Summer', jul: 'Summer', aug: 'Summer',
-    sep: 'Autumn', oct: 'Autumn', nov: 'Autumn'
-  };
-  return seasons[month] || 'Current';
-};
 
 module.exports = {
   getAllProducts,
   getProductById,
   getProductsByCategory,
+  getSubcategoriesByCategory,
+  getProductsByCampus,
+  getProductsByTag,
   createProduct,
   updateProduct,
   deleteProduct,
-  updateProductStock,
-  bulkUpdateAvailability,
   searchProducts,
-  getProductStats,
-  getSeasonalProducts,
-  getProductsByTag,
+  createProductReview,
+  toggleFavorite,
+  getProductStats
 };

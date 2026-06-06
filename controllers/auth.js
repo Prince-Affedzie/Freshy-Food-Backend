@@ -5,7 +5,7 @@ const User = require('../model/User')
 const redis = require("../config/redis");
 
 const NALO_KEY = process.env.NALO_API_KEY;
-const SENDER_ID = "FreshyFoods";
+const SENDER_ID = "CediMart";
 
 
 const formatPhoneNumber = (phone) => {
@@ -40,7 +40,7 @@ const sendOTP = async (req, res) => {
   const existing = await redis.get(redisKey);
   if (existing) {
     return res.status(429).json({
-      error: "OTP already sent. Please wait before requesting again.",
+      error: "OTP already sent. Please wait for few minutes before requesting again.",
     });
   }
 
@@ -60,7 +60,7 @@ const sendOTP = async (req, res) => {
 );
 
   try {
-    const message = `Your FreshyFoodFactory reset code is: ${otp}. Valid for 5 minutes.`;
+    const message = `Your CediMart verificaction code is: ${otp}. Valid for 5 minutes. Please don't share this code with anyone.`;
 
     await axios.post(
       "https://sms.nalosolutions.com/smsbackend/Resl_Nalo/send-message/",
@@ -74,6 +74,64 @@ const sendOTP = async (req, res) => {
 
     res.status(200).json({ success: true, message: "OTP sent" });
   } catch (error) {
+    console.log(error)
+    console.error(error.response?.data || error.message);
+    res.status(500).json({ error: "Failed to send SMS" });
+  }
+};
+
+
+
+const sendVendorOTP = async (req, res) => {
+  const { phoneNumber } = req.body;
+
+  if (!phoneNumber) {
+    return res.status(400).json({ error: "Phone number is required" });
+  }
+
+
+  const formattedPhone = formatPhoneNumber(phoneNumber);
+
+  const redisKey = `otp:${formattedPhone}`;
+
+  const existing = await redis.get(redisKey);
+  if (existing) {
+    return res.status(429).json({
+      error: "OTP already sent. Please wait for few minutes before requesting again.",
+    });
+  }
+
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+ 
+  const hashedOTP = crypto.createHash("sha256").update(otp).digest("hex");
+
+  // Store in Redis with TTL (5 mins)
+    await redis.set(
+    redisKey,
+    JSON.stringify({
+    otp: hashedOTP,
+    attempts: 0,
+    }),
+  "EX", 300
+);
+
+  try {
+    const message = `Your CediMart verificaction code is: ${otp}. Valid for 5 minutes. Please don't share this code with anyone.`;
+
+    await axios.post(
+      "https://sms.nalosolutions.com/smsbackend/Resl_Nalo/send-message/",
+      {
+        key: NALO_KEY,
+        msisdn: formattedPhone,
+        message,
+        sender_id: SENDER_ID,
+      }
+    );
+
+    res.status(200).json({ success: true, message: "OTP sent" });
+  } catch (error) {
+    console.log(error)
     console.error(error.response?.data || error.message);
     res.status(500).json({ error: "Failed to send SMS" });
   }
@@ -147,4 +205,4 @@ const resetPassword = async (req, res) => {
   });
 };
 
-module.exports = { sendOTP, verifyOTP,resetPassword };
+module.exports = { sendOTP,sendVendorOTP, verifyOTP,resetPassword };
