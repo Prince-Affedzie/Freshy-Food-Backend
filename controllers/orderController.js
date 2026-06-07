@@ -137,7 +137,7 @@ const handleOrderPostProcessing = async (order, userId, notificationService) => 
 const createOrder = asyncHandler(async (req, res) => {
   const { id } = req.user;
   const { 
-    paymentId, 
+    paymentReference, 
     orderItems, 
     shippingAddress, 
     paymentMethod, 
@@ -176,7 +176,7 @@ const createOrder = asyncHandler(async (req, res) => {
       },
       deliverySchedule, // FIXED: Passes the full object (preferredDay/Time)
       deliveryNote,
-      paymentId,
+      paymentReference,
       paymentMethod,
       status: 'Processing',
       isPaid: true
