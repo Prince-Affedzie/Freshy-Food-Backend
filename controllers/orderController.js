@@ -81,7 +81,7 @@ const validateAndFetchItems = async (orderItems) => {
       price: product.price,
       product: product._id,
       vendor: product.vendor?._id,
-      image: product.image || '',
+      image: product.image || (product.images?.length > 0 ? product.images[0] : ''),
       unit: item.unit || product.unit || 'unit' // FIXED: Ensuring unit is preserved
     });
 
@@ -138,6 +138,7 @@ const createOrder = asyncHandler(async (req, res) => {
   const { id } = req.user;
   const { 
     paymentReference, 
+    paymentStatus,
     orderItems, 
     shippingAddress, 
     paymentMethod, 
@@ -178,6 +179,7 @@ const createOrder = asyncHandler(async (req, res) => {
       deliveryNote,
       paymentReference,
       paymentMethod,
+      paymentStatus,
       status: 'Processing',
       isPaid: true
     });
@@ -218,7 +220,7 @@ const getOrderById = asyncHandler(async (req, res) => {
 
     const order = await Order.findById(orderId)
       .populate('user', 'name email phone')
-      .populate('orderItems.product', 'name category unit image');
+      .populate('orderItems.product', 'name category unit image images');
 
     if (!order) {
       return res.status(404).json({
@@ -293,7 +295,8 @@ const getOrderById = asyncHandler(async (req, res) => {
             name: item.product.name,
             category: item.product.category,
             unit: item.product.unit,
-            image: item.product.image
+            image: item.product.image,
+            images:item.product.images
           } : null
         })),
         shippingAddress: order.shippingAddress,
@@ -354,7 +357,7 @@ const adminGetOrderById = asyncHandler(async (req, res) => {
 
     const order = await Order.findById(orderId)
       .populate('user', 'firstName email phone')
-      .populate('orderItems.product', 'name category unit image');
+      .populate('orderItems.product', 'name category unit image images');
 
     if (!order) {
       return res.status(404).json({
@@ -421,7 +424,8 @@ const adminGetOrderById = asyncHandler(async (req, res) => {
             name: item.product.name,
             category: item.product.category,
             unit: item.product.unit,
-            image: item.product.image
+            image: item.product.image,
+            images: item.product.images,
           } : null
         })),
         shippingAddress: order.shippingAddress,
@@ -521,6 +525,8 @@ const getMyOrders = asyncHandler(async (req, res) => {
       avgOrderValue: allOrders.length > 0 ? 
         allOrders.reduce((sum, order) => sum + order.totalPrice, 0) / allOrders.length : 0
     };
+    
+    
 
     res.status(200).json({
       success: true,
@@ -558,12 +564,14 @@ const getMyOrders = asyncHandler(async (req, res) => {
           name: item.name,
           quantity: item.quantity,
           unit: item.unit,
-          image: item.image
+          // ✅ FIX: Safely get image from array or fallback
+          image: item.image || (item.images?.length > 0 ? item.images[0] : null),
         })),
         hasMoreItems: order.orderItems.length > 3
       }))
     });
   } catch (error) {
+    console.log(error);
     res.status(500).json({
       success: false,
       message: 'Error fetching user orders',

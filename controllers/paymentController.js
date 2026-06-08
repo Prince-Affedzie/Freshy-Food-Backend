@@ -81,6 +81,7 @@ const verifyPayment = async (req, res) => {
 
     const data = verifyRes.data.data;
     const verifiedAmount = data.amount / 100;
+    console.log("Data", data)
     
     let payment
 
@@ -97,10 +98,11 @@ const verifyPayment = async (req, res) => {
       fundedAt: new Date(),
       });
     }
+    console.log(payment)
 
-    res.status(200).json({message:"Payment successfully made"});
+    res.status(200).json({message:"Payment successfully made",success:true});
   } catch (err) {
-    console.error(err);
+    console.log(err);
     res.status(500).json({ message: 'Internal Server Error' });
   }
 };

@@ -11,6 +11,10 @@ const orderSchema = new mongoose.Schema({
     type:String,
     required: false
   },
+  paymentStatus:{
+    type:String,
+    required: false
+  },
 
   // Add package info
   package: {

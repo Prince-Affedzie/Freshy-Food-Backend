@@ -459,6 +459,7 @@ const createProduct = asyncHandler(async (req, res) => {
 // @route   PUT /api/products/:id
 // @access  Private/Vendor (owner)
 const updateProduct = asyncHandler(async (req, res) => {
+  try{
   const product = await Product.findById(req.params.id);
 
   if (!product) {
@@ -517,6 +518,10 @@ const updateProduct = asyncHandler(async (req, res) => {
   await invalidateProductCache();
 
   res.status(200).json({ success: true, message: 'Product updated', data: product });
+}catch(error){
+  console.log(error)
+  res.status(500).json({message:"Internal server error"})
+}
 });
 
 // @desc    Delete product
