@@ -114,7 +114,8 @@ const handleOrderPostProcessing = async (order, userId, notificationService) => 
   ]);
 
    const user = await User.findByIdAndUpdate(userId)
-   const sms_message = `Hello ${user.firstName}, your CediMart order #${order._id.toString().slice(-6)} has been received! We're getting your order ready for delivery. Thank you for shopping local!`;
+   const sms_message = `Hello ${user.firstName}, your CediMart order #${order._id.toString().slice(-6)} has been received! We're getting your order ready for delivery. Thank you for shopping!`;
+   console.log("About to send sms to this number: ",order.shippingAddress.phone)
    await sendSMS(order.shippingAddress.phone,sms_message)
    // 3. Global Admin Notification
   await notificationService.notifyAdminsNewOrder(order,user);
@@ -122,9 +123,9 @@ const handleOrderPostProcessing = async (order, userId, notificationService) => 
   // This ensures Vendor A doesn't see Vendor B's items
   await Promise.all(order.subOrders.map(async (sub) => {
     const vendor = await Vendor.findById(sub.vendor).populate('user');
-    if (vendor?.user?.phone) {
-      const message = `New Order #${order._id.toString().slice(-5)}: You have ${sub.items.length} items to prepare for FreshyFood.`;
-      //await sendSMS(vendor.user.phone, message);
+    if (vendor?.phone) {
+      const message = `New Order #${order._id.toString().slice(-5)} received: You have ${sub.items.length} items to prepare for CediMart`;
+      await sendSMS(vendor.phone, message);
 
       
     }

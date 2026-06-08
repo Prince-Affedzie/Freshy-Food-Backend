@@ -557,7 +557,7 @@ const getVendorOrders = async (req, res) => {
       // Important: We MUST populate the product inside the items array to see product info
       .populate({
         path: 'subOrders.items.product',
-        select: 'name image price unit'
+        select: 'name images price unit'
       })
       .sort({ createdAt: -1 });
 
@@ -585,6 +585,8 @@ const getVendorOrders = async (req, res) => {
         status: order.status // Master order status
       };
     }).filter(order => order !== null); // Clean up any nulls
+
+   
 
     res.status(200).json({
       success: true,
