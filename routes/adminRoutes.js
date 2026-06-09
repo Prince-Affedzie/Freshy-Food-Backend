@@ -4,12 +4,15 @@ const {getAllUsers,
   updateUser,
   toggleAdmin,
   deleteUser} = require("../controllers/adminUserController")
-  const { getAdminDashboardData,} = require('../controllers/adminMainController')
+  const { getAdminDashboardData,getProductById,
+    deleteProduct,updateProduct,getVendors,getVendor,updateVendor,deleteVendor} = require('../controllers/adminMainController')
   const {getPaymentOverview,
   getAllPayments,
   getPaymentById,
   updatePaymentStatus,
   refundPayment,} = require('../controllers/adminPaymentController')
+  const {upload} = require('../Utils/mutlerConfig')
+
 
   const express = require('express')
   const adminRoutes = express.Router()
@@ -29,6 +32,23 @@ adminRoutes.get('/admin/payments',  getAllPayments);
 adminRoutes.get('/admin/payments/:id',  getPaymentById);
 adminRoutes.put('/admin/payments/:id/status',  updatePaymentStatus);
 adminRoutes.post('/admin/payments/:id/refund',  refundPayment);
+
+// productsRoutes
+adminRoutes.get('/admin/product/:id', getProductById);
+adminRoutes.delete('/admin/product/:id', deleteProduct);
+adminRoutes.put('/admin/product/:id', updateProduct);
+
+// vendorRoutes
+adminRoutes.get('/admin/vendors',getVendors)
+adminRoutes.get('/admin/vendor/:id',getVendor)
+adminRoutes.put('/admin/vendor/:id',upload.fields([
+  { name: 'storeBanner', maxCount: 1 },
+  { name: 'profileImage', maxCount: 1 }
+]),updateVendor)
+
+adminRoutes.delete('/admin/vendor/:id',deleteVendor)
+
+
 
 
 module.exports = adminRoutes;

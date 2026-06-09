@@ -124,7 +124,7 @@ const handleOrderPostProcessing = async (order, userId, notificationService) => 
   await Promise.all(order.subOrders.map(async (sub) => {
     const vendor = await Vendor.findById(sub.vendor).populate('user');
     if (vendor?.phone) {
-      const message = `New Order #${order._id.toString().slice(-5)} received: You have ${sub.items.length} items to prepare for CediMart`;
+      const message = `New Order #${order._id.toString().slice(-5)} received: You have ${sub.items.length} items to prepare for delivery.`;
       await sendSMS(vendor.phone, message);
 
       
@@ -216,7 +216,6 @@ const getOrderById = asyncHandler(async (req, res) => {
   try {
     console.log(req.params)
     const orderId = req.params.id;
-    console.log(orderId)
     const userId = req.user.id;
 
     const order = await Order.findById(orderId)
@@ -335,7 +334,7 @@ const getOrderById = asyncHandler(async (req, res) => {
           updatedAt: order.updatedAt,
           updatedAtDisplay: formatDate(order.updatedAt)
         },
-        subscriptionId: order.subscriptionId
+        
       }
     });
   } catch (error) {
@@ -351,14 +350,16 @@ const getOrderById = asyncHandler(async (req, res) => {
 
 const adminGetOrderById = asyncHandler(async (req, res) => {
   try {
-    console.log(req.params)
     const orderId = req.params.id;
-    console.log(orderId)
-    
 
     const order = await Order.findById(orderId)
-      .populate('user', 'firstName email phone')
-      .populate('orderItems.product', 'name category unit image images');
+      .populate('user', 'firstName lastName email phone')
+      .populate('orderItems.product', 'name category images price condition campus')
+      .populate({
+        path: 'subOrders.vendor',
+        select: 'name storeName phone campus profileImage location rating',
+      })
+      .populate('subOrders.items.product', 'name images price');
 
     if (!order) {
       return res.status(404).json({
@@ -367,7 +368,14 @@ const adminGetOrderById = asyncHandler(async (req, res) => {
       });
     }
 
-    
+    // Helper to get product image from array
+    const getProductImage = (product) => {
+      if (product?.images?.length > 0) return product.images[0];
+      if (product?.image) return product.image;
+      return null;
+    };
+
+    // Build timeline
     const timeline = [
       {
         status: 'Order Placed',
@@ -379,57 +387,85 @@ const adminGetOrderById = asyncHandler(async (req, res) => {
         status: 'Payment',
         date: order.isPaid ? order.paidAt : null,
         completed: order.isPaid,
-        description: order.isPaid ? `Paid via ${order.paymentMethod}` : 'Awaiting payment'
+        description: order.isPaid
+          ? `Paid via ${order.paymentMethod || 'Paystack'}${order.paymentReference ? ` · Ref: ${order.paymentReference}` : ''}`
+          : 'Awaiting payment'
       },
       {
         status: 'Processing',
-        date: order.status === 'Processing' ? new Date() : null,
+        date: order.status === 'Processing' ? order.updatedAt : null,
         completed: ['Processing', 'Out for Delivery', 'Delivered'].includes(order.status),
-        description: 'Preparing your items'
+        description: 'Vendors preparing items'
       },
       {
         status: 'Out for Delivery',
-        date: order.status === 'Out for Delivery' ? new Date() : null,
+        date: order.status === 'Out for Delivery' ? order.updatedAt : null,
         completed: ['Out for Delivery', 'Delivered'].includes(order.status),
-        description: 'On the way to your address'
+        description: 'On the way to delivery address'
       },
       {
         status: 'Delivered',
         date: order.deliveredAt,
         completed: order.isDelivered,
-        description: order.isDelivered ? 'Delivered successfully' : 'Expected delivery'
+        description: order.isDelivered ? 'Delivered successfully' : 'Pending delivery'
       }
     ];
+
+    // Add cancelled timeline if applicable
+    if (order.status === 'Cancelled') {
+      timeline.push({
+        status: 'Cancelled',
+        date: order.updatedAt,
+        completed: true,
+        description: 'Order has been cancelled'
+      });
+    }
 
     res.status(200).json({
       success: true,
       data: {
         id: order._id,
         orderNumber: order._id.toString().slice(-8).toUpperCase(),
+
+        // Customer info
         user: {
-          id: order.user._id,
-          name: order.user.firstName,
-          email: order.user.email,
-          phone: order.user.phone
+          id: order.user?._id,
+          name: order.user ? `${order.user.firstName || ''} ${order.user.lastName || ''}`.trim() : 'N/A',
+          firstName: order.user?.firstName,
+          lastName: order.user?.lastName,
+          email: order.user?.email,
+          phone: order.user?.phone
         },
+
+        // Order items
         orderItems: order.orderItems.map(item => ({
           id: item.product?._id || item.product,
           name: item.name,
           quantity: item.quantity,
           unit: item.unit,
-          image: item.image,
-          price: formatPrice(item.price),
-          totalPrice: formatPrice(item.price * item.quantity),
+          image: item.image || getProductImage(item.product),
+          price: item.price,
+          priceDisplay: formatPrice(item.price),
+          totalPrice: item.price * item.quantity,
+          totalPriceDisplay: formatPrice(item.price * item.quantity),
           product: item.product?._id ? {
             id: item.product._id,
             name: item.product.name,
             category: item.product.category,
-            unit: item.product.unit,
-            image: item.product.image,
+            condition: item.product.condition,
+            campus: item.product.campus,
+            image: getProductImage(item.product),
             images: item.product.images,
+            price: item.product.price,
           } : null
         })),
+
+        // Shipping
         shippingAddress: order.shippingAddress,
+        deliverySchedule: order.deliverySchedule,
+        deliveryNote: order.deliveryNote,
+
+        // Pricing
         pricing: {
           itemsPrice: order.itemsPrice,
           itemsPriceDisplay: formatPrice(order.itemsPrice),
@@ -438,37 +474,86 @@ const adminGetOrderById = asyncHandler(async (req, res) => {
           totalPrice: order.totalPrice,
           totalPriceDisplay: formatPrice(order.totalPrice)
         },
+
+        // Payment
         payment: {
-          method: order.paymentMethod,
+          method: order.paymentMethod || 'Paystack',
+          reference: order.paymentReference,
+          status: order.paymentStatus || (order.isPaid ? 'paid' : 'pending'),
           isPaid: order.isPaid,
           paidAt: order.paidAt,
           paidAtDisplay: formatDate(order.paidAt)
         },
+
+        // Delivery
         delivery: {
-          date: order.deliveryDate,
-          dateDisplay: formatDate(order.deliveryDate),
           isDelivered: order.isDelivered,
           deliveredAt: order.deliveredAt,
-          deliveredAtDisplay: formatDate(order.deliveredAt),
-          note: order.deliveryNote
+          deliveredAtDisplay: formatDate(order.deliveredAt)
         },
+
+        // Status
         status: {
           current: order.status,
           isPaid: order.isPaid,
           isDelivered: order.isDelivered,
           timeline
         },
+
+        // Sub-orders (vendor breakdown)
+        subOrders: order.subOrders?.map(sub => ({
+          id: sub._id,
+          vendor: sub.vendor ? {
+            id: sub.vendor._id,
+            name: sub.vendor.name,
+            storeName: sub.vendor.storeName,
+            phone: sub.vendor.phone,
+            campus: sub.vendor.campus,
+            profileImage: sub.vendor.profileImage,
+            location: sub.vendor.location,
+            rating: sub.vendor.rating,
+          } : null,
+          items: sub.items?.map(si => ({
+            product: si.product ? {
+              id: si.product._id,
+              name: si.product.name,
+              image: getProductImage(si.product),
+              images: si.product.images,
+              price: si.product.price,
+            } : null,
+            quantity: si.quantity,
+            price: si.price,
+            priceDisplay: formatPrice(si.price),
+            totalPrice: si.price * si.quantity,
+            totalPriceDisplay: formatPrice(si.price * si.quantity),
+          })),
+          itemCount: sub.items?.length || 0,
+          subtotal: sub.items?.reduce((sum, si) => sum + (si.price * si.quantity), 0) || 0,
+          subtotalDisplay: formatPrice(sub.items?.reduce((sum, si) => sum + (si.price * si.quantity), 0) || 0),
+        })) || [],
+
+        // Package info (if applicable)
+        package: order.package?.id ? {
+          id: order.package.id,
+          name: order.package.name,
+          basePrice: order.package.basePrice,
+          valuePrice: order.package.valuePrice,
+        } : null,
+
+        // Dates
         dates: {
           createdAt: order.createdAt,
           createdAtDisplay: formatDate(order.createdAt),
           updatedAt: order.updatedAt,
           updatedAtDisplay: formatDate(order.updatedAt)
         },
-        subscriptionId: order.subscriptionId
+
+        // Metadata
+        wasGuestCheckout: order.wasGuestCheckout || false,
       }
     });
   } catch (error) {
-    console.log(error)
+    console.error('Error fetching order:', error);
     res.status(500).json({
       success: false,
       message: 'Error fetching order',

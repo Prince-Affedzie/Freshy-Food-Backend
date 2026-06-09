@@ -2,6 +2,13 @@ const Order = require('../model/Order');
 const Product = require('../model/Product');
 const { Payment } = require('../model/PaymentModel');
 const User = require('../model/User');
+const Vendor = require('../model/Vendor');
+const asyncHandler = require('express-async-handler');
+const cloudinary = require('../Utils/cloudinaryConfig')
+const { 
+  uploadMultipleProductImages, 
+  deleteMultipleProductImages 
+} = require('../config/supabaseS3');
 
 const getAdminDashboardData = async (req, res) => {
   try {
@@ -152,6 +159,321 @@ const getAdminDashboardData = async (req, res) => {
   }
 };
 
+
+const getProductById = asyncHandler(async (req, res) => {
+  console.log(req.params)
+  const product = await Product.findById(req.params.id)
+    .populate('vendor', '_id name phone rating')
+    .populate('reviews.user', 'name avatar');
+
+  if (!product) {
+    return res.status(404).json({ success: false, message: 'Product not found' });
+  }
+
+
+  res.status(200).json({
+    success: true,
+    data: { product}
+  });
+});
+
+
+
+const updateProduct = asyncHandler(async (req, res) => {
+  try{
+  const product = await Product.findById(req.params.id);
+
+  if (!product) {
+    return res.status(404).json({ success: false, message: 'Product not found' });
+  }
+
+
+  const updatableFields = [
+    'name', 'category', 'subcategory', 'brand', 'price', 'negotiable', 'condition',
+    'description', 'campus', 'location', 'tags', 'countInStock', 'isAvailable'
+  ];
+
+  updatableFields.forEach(field => {
+    if (req.body[field] !== undefined) {
+      product[field] = req.body[field];
+    }
+  });
+
+  if (req.body.category && !VALID_CATEGORIES.includes(req.body.category)) {
+    return res.status(400).json({ success: false, message: 'Invalid category' });
+  }
+
+  if (req.body.subcategory && !VALID_SUBCATEGORIES.includes(req.body.subcategory)) {
+    return res.status(400).json({ success: false, message: 'Invalid subcategory' });
+  }
+
+  if (req.body.name && req.body.name !== product.name) {
+    let newSlug = generateSlug(req.body.name);
+    const existing = await Product.findOne({ slug: newSlug, _id: { $ne: product._id } });
+    if (existing) newSlug = `${newSlug}-${Date.now()}`;
+    product.slug = newSlug;
+  }
+
+  if (req.files && req.files.length > 0) {
+    try {
+      if (product.images?.length) {
+        await deleteMultipleProductImages(product.images);
+      }
+
+      const result = await uploadMultipleProductImages(req.files);
+      product.images = result.map(r => r.url);
+    } catch (uploadError) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to upload new images',
+        error: uploadError.message
+      });
+    }
+  }
+
+  await product.save();
+  
+
+  res.status(200).json({ success: true, message: 'Product updated', data: product });
+}catch(error){
+  console.log(error)
+  res.status(500).json({message:"Internal server error"})
+}
+});
+
+
+
+
+// @desc    Delete product
+// @route   DELETE /api/products/:id
+// @access  Private/Vendor (owner) or Admin
+const deleteProduct = asyncHandler(async (req, res) => {
+  const product = await Product.findById(req.params.id);
+
+  if (!product) {
+    return res.status(404).json({ success: false, message: 'Product not found' });
+  }
+
+  const vendor = await Vendor.findOne({ vendor: product.vendor });
+
+  if (product.images?.length) {
+    try {
+      await deleteMultipleProductImages(product.images);
+    } catch (err) {
+      console.log("Image deletion error:", err.message);
+    }
+  }
+
+  vendor.products.pull(product._id);
+  await vendor.save();
+  await product.deleteOne();
+ 
+  res.status(200).json({ success: true, message: 'Product deleted' });
+});
+
+
+// Vendor functions
+const getVendors = async (req, res) => {
+  try {
+    let query = {};
+    
+    
+    if (req.campus) {
+      query.campus = req.campus;
+    }
+
+    const vendors = await Vendor.find(query).populate('products').sort({createdAt:-1});
+    res.status(200).json({ 
+      success: true, 
+      count: vendors.length, 
+      data: vendors 
+    });
+  } catch (error) {
+    console.log(error)
+    res.status(400).json({ success: false, error: error.message });
+  }
+};
+
+
+const getVendor = async (req, res) => {
+  try {
+    const vendor = await Vendor.findById(req.params.id).populate('products');
+    
+    if (!vendor) {
+      return res.status(404).json({ success: false, error: 'Vendor not found' });
+    }
+
+    res.status(200).json({ success: true, data: vendor });
+  } catch (error) {
+    console.log(error)
+    res.status(400).json({ success: false, error: error.message });
+  }
+};
+
+
+const updateVendor = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const vendor = await Vendor.findById(id);
+
+    if (!vendor) {
+      return res.status(404).json({ success: false, error: 'Vendor not found' });
+    }
+
+    const uploadToCloudinary = async (fileBuffer, mimetype, folder) => {
+      const b64 = Buffer.from(fileBuffer).toString('base64');
+      const dataURI = `data:${mimetype};base64,${b64}`;
+      return await cloudinary.uploader.upload(dataURI, {
+        folder: `cedimart/${folder}`,
+        resource_type: 'auto',
+        transformation: [
+          { width: 1000, height: 1000, crop: 'limit' },
+          { quality: 'auto:good' },
+        ],
+      });
+    };
+
+    let updatedData = { ...req.body };
+
+    // Remove file objects from updatedData — prevent "[object Object]" strings
+    delete updatedData.storeBanner;
+    delete updatedData.profileImage;
+    // Also clean old field names if they come through
+    delete updatedData.store_banner;
+    delete updatedData.profile_image;
+
+    // Handle Store Banner Upload
+    if (req.files && req.files.storeBanner) {
+      // Delete old banner if it exists
+      if (vendor.storeBannerCloudinaryId) {
+        await cloudinary.uploader.destroy(vendor.storeBannerCloudinaryId);
+      }
+
+      const bannerResult = await uploadToCloudinary(
+        req.files.storeBanner[0].buffer,
+        req.files.storeBanner[0].mimetype,
+        'vendors/banners'
+      );
+
+      updatedData.storeBanner = bannerResult.secure_url;
+      updatedData.storeBannerCloudinaryId = bannerResult.public_id;
+    }
+
+    // Handle Profile Image Upload
+    if (req.files && req.files.profileImage) {
+      // Delete old profile image if it exists
+      if (vendor.profileImageCloudinaryId) {
+        await cloudinary.uploader.destroy(vendor.profileImageCloudinaryId);
+      }
+
+      const profileResult = await uploadToCloudinary(
+        req.files.profileImage[0].buffer,
+        req.files.profileImage[0].mimetype,
+        'vendors/profiles'
+      );
+
+      updatedData.profileImage = profileResult.secure_url;
+      updatedData.profileImageCloudinaryId = profileResult.public_id;
+    }
+
+    // Validate campus if being updated
+    if (updatedData.campus) {
+      const validCampuses = ['UG', 'KNUST', 'UCC', 'UEW', 'UPSA', 'GIMPA', 'ASHESI', 'ATU', 'OTHER'];
+      if (!validCampuses.includes(updatedData.campus)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid campus',
+          validCampuses,
+        });
+      }
+    }
+
+    // Handle nested location object
+    if (updatedData.campusArea !== undefined || updatedData.hostel !== undefined) {
+      updatedData.location = {
+        ...vendor.location,
+        ...(updatedData.campusArea !== undefined && { campusArea: updatedData.campusArea }),
+        ...(updatedData.hostel !== undefined && { hostel: updatedData.hostel }),
+      };
+      delete updatedData.campusArea;
+      delete updatedData.hostel;
+    }
+
+    // Handle nested socialLinks object
+    if (updatedData.whatsapp !== undefined || updatedData.instagram !== undefined) {
+      updatedData.socialLinks = {
+        ...vendor.socialLinks,
+        ...(updatedData.whatsapp !== undefined && { whatsapp: updatedData.whatsapp }),
+        ...(updatedData.instagram !== undefined && { instagram: updatedData.instagram }),
+      };
+      delete updatedData.whatsapp;
+      delete updatedData.instagram;
+    }
+
+    // Handle categories as array
+    if (updatedData.categories) {
+      if (typeof updatedData.categories === 'string') {
+        updatedData.categories = updatedData.categories.split(',').map(c => c.trim()).filter(Boolean);
+      }
+    }
+
+    const updatedVendor = await Vendor.findByIdAndUpdate(id, updatedData, {
+      new: true,
+      runValidators: true,
+    }).populate('user', 'firstName lastName phone role');
+
+    res.status(200).json({
+      success: true,
+      message: 'Vendor updated successfully',
+      data: updatedVendor,
+    });
+  } catch (error) {
+    console.error('Update Vendor Error:', error);
+
+    // Handle validation errors
+    if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        error: 'Validation error',
+        errors,
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+};
+
+
+const deleteVendor = async (req, res) => {
+  try {
+    const vendor = await Vendor.findByIdAndDelete(req.params.id);
+
+    if (!vendor) {
+      return res.status(404).json({ success: false, error: 'Vendor not found' });
+    }
+
+    res.status(200).json({ success: true, data: {} });
+  } catch (error) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+};
+
+
+
+
+
 module.exports = {
   getAdminDashboardData,
+  getProductById,
+  deleteProduct,
+  updateProduct,
+  getVendors,
+  getVendor,
+  updateVendor,
+  deleteVendor,
 };

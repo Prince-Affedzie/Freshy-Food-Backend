@@ -66,7 +66,6 @@ const getAllPayments = async (req, res) => {
 
     const payments = await Payment.find(filter)
       .populate('user', 'firstName email phone')
-      .populate('orderId', 'totalPrice status')
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(Number(limit));
@@ -99,7 +98,7 @@ const getPaymentById = async (req, res) => {
   try {
     const payment = await Payment.findById(req.params.id)
       .populate('user', 'firstName email phone')
-      .populate('orderId');
+      
 
     if (!payment) {
       return res.status(404).json({

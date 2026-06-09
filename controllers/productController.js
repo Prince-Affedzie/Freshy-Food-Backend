@@ -131,7 +131,7 @@ const getAllProducts = asyncHandler(async (req, res) => {
     Product.countDocuments(query)
   ]);
 
-  console.log(products)
+ 
 
   const totalPages = Math.ceil(total / limitNum);
 

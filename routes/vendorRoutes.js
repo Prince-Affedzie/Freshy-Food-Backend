@@ -4,8 +4,6 @@ const {
   createVendor,
   getVendors,
   getVendor,
-  updateVendor,
-  deleteVendor,
   getVendorsByMarket,
   getVendorProducts,
   getMyVendorProfile,
@@ -29,11 +27,8 @@ vendorRouter.get('/vendor/my_products',auth, getVendorProducts)
 
 
 vendorRouter.get('/vendor/:id',getVendor)
-vendorRouter.put('/vendor/:id',upload.fields([
-  { name: 'storeBanner', maxCount: 1 },
-  { name: 'profileImage', maxCount: 1 }
-]),updateVendor)
-vendorRouter.delete('/vendor/:id',deleteVendor)
+
+
 
 vendorRouter.get('/vendor_profile',auth,getMyVendorProfile)
 
