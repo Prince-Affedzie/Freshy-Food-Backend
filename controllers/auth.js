@@ -113,7 +113,7 @@ const sendVendorOTP = async (req, res) => {
     otp: hashedOTP,
     attempts: 0,
     }),
-  "EX", 300
+  "EX", 180
 );
 
   try {
