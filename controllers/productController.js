@@ -167,7 +167,7 @@ const getAllProducts = asyncHandler(async (req, res) => {
 // @access  Public
 const getProductById = asyncHandler(async (req, res) => {
   const product = await Product.findById(req.params.id)
-    .populate('vendor', '_id name phone rating')
+    .populate('vendor', '_id name phone rating profileImage campus storeName')
     .populate('reviews.user', 'name avatar');
 
   if (!product) {
@@ -177,6 +177,7 @@ const getProductById = asyncHandler(async (req, res) => {
   product.views = (product.views || 0) + 1;
   await product.save();
 
+  // Fetch related products (same category + campus)
   const relatedProducts = await Product.find({
     _id: { $ne: product._id },
     category: product.category,
@@ -184,12 +185,29 @@ const getProductById = asyncHandler(async (req, res) => {
     isAvailable: true
   })
     .limit(6)
-    .select('name images price condition negotiable category')
+    .select('name images price condition negotiable category campus')
     .sort({ createdAt: -1 });
+
+  // Fetch vendor's other products (exclude current product)
+  let vendorProducts = [];
+  if (product.vendor?._id) {
+    vendorProducts = await Product.find({
+      _id: { $ne: product._id },
+      vendor: product.vendor._id,
+      isAvailable: true
+    })
+      .limit(6)
+      .select('name images price condition negotiable category campus')
+      .sort({ createdAt: -1 });
+  }
 
   res.status(200).json({
     success: true,
-    data: { product, relatedProducts }
+    data: { 
+      product, 
+      relatedProducts,
+      vendorProducts 
+    }
   });
 });
 
