@@ -227,14 +227,6 @@ const updateProduct = asyncHandler(async (req, res) => {
       product.campus = req.body.campus;
     }
 
-    // Rest of your validation code...
-    if (req.body.category && !VALID_CATEGORIES.includes(req.body.category)) {
-      return res.status(400).json({ success: false, message: 'Invalid category' });
-    }
-
-    if (req.body.subcategory && !VALID_SUBCATEGORIES.includes(req.body.subcategory)) {
-      return res.status(400).json({ success: false, message: 'Invalid subcategory' });
-    }
 
     if (req.body.name && req.body.name !== product.name) {
       let newSlug = generateSlug(req.body.name);
@@ -286,8 +278,9 @@ const deleteProduct = asyncHandler(async (req, res) => {
   if (!product) {
     return res.status(404).json({ success: false, message: 'Product not found' });
   }
+  console.log('product',product)
 
-  const vendor = await Vendor.findOne({ vendor: product.vendor });
+  const vendor = await Vendor.findById( product.vendor );
 
   if (product.images?.length) {
     try {
@@ -296,9 +289,9 @@ const deleteProduct = asyncHandler(async (req, res) => {
       console.log("Image deletion error:", err.message);
     }
   }
-
-  vendor.products.pull(product._id);
-  await vendor.save();
+ 
+   vendor.products.pull(product._id);
+   await vendor.save();
   await product.deleteOne();
  
   res.status(200).json({ success: true, message: 'Product deleted' });

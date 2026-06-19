@@ -36,7 +36,7 @@ adminRoutes.post('/admin/payments/:id/refund',  refundPayment);
 // productsRoutes
 adminRoutes.get('/admin/product/:id', getProductById);
 adminRoutes.delete('/admin/product/:id', deleteProduct);
-adminRoutes.put('/admin/product/:id', updateProduct);
+adminRoutes.put('/admin/product/:id',upload.array('productImages', 10), updateProduct);
 
 // vendorRoutes
 adminRoutes.get('/admin/vendors',getVendors)
