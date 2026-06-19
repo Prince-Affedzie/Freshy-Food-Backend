@@ -181,7 +181,7 @@ const getProductById = asyncHandler(async (req, res) => {
   const relatedProducts = await Product.find({
     _id: { $ne: product._id },
     category: product.category,
-    campus: product.campus,
+    //campus: product.campus,
     isAvailable: true
   })
     .limit(6)

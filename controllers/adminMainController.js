@@ -180,68 +180,100 @@ const getProductById = asyncHandler(async (req, res) => {
 
 
 const updateProduct = asyncHandler(async (req, res) => {
-  try{
-  const product = await Product.findById(req.params.id);
+  try {
+    const product = await Product.findById(req.params.id);
 
-  if (!product) {
-    return res.status(404).json({ success: false, message: 'Product not found' });
-  }
-
-
-  const updatableFields = [
-    'name', 'category', 'subcategory', 'brand', 'price', 'negotiable', 'condition',
-    'description', 'campus', 'location', 'tags', 'countInStock', 'isAvailable'
-  ];
-
-  updatableFields.forEach(field => {
-    if (req.body[field] !== undefined) {
-      product[field] = req.body[field];
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
     }
-  });
 
-  if (req.body.category && !VALID_CATEGORIES.includes(req.body.category)) {
-    return res.status(400).json({ success: false, message: 'Invalid category' });
-  }
+    // Regular fields (excluding 'location')
+    const updatableFields = [
+      'name', 'category', 'subcategory', 'brand', 'price', 'negotiable', 'condition',
+      'description', 'campus', 'tags', 'countInStock', 'isAvailable'
+    ];
 
-  if (req.body.subcategory && !VALID_SUBCATEGORIES.includes(req.body.subcategory)) {
-    return res.status(400).json({ success: false, message: 'Invalid subcategory' });
-  }
-
-  if (req.body.name && req.body.name !== product.name) {
-    let newSlug = generateSlug(req.body.name);
-    const existing = await Product.findOne({ slug: newSlug, _id: { $ne: product._id } });
-    if (existing) newSlug = `${newSlug}-${Date.now()}`;
-    product.slug = newSlug;
-  }
-
-  if (req.files && req.files.length > 0) {
-    try {
-      if (product.images?.length) {
-        await deleteMultipleProductImages(product.images);
+    updatableFields.forEach(field => {
+      if (req.body[field] !== undefined) {
+        product[field] = req.body[field];
       }
+    });
 
-      const result = await uploadMultipleProductImages(req.files);
-      product.images = result.map(r => r.url);
-    } catch (uploadError) {
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to upload new images',
-        error: uploadError.message
-      });
+    // Handle location separately
+    if (req.body.location) {
+      // If location is a string or has specific structure, handle accordingly
+      if (typeof req.body.location === 'object' && !Array.isArray(req.body.location)) {
+        // For nested location object (from FormData with brackets)
+        if (!product.location) {
+          product.location = {};
+        }
+        
+        // Update only the fields that are provided
+        if (req.body.location.campusArea !== undefined) {
+          product.location.campusArea = req.body.location.campusArea;
+        }
+        if (req.body.location.hostel !== undefined) {
+          product.location.hostel = req.body.location.hostel;
+        }
+      } else {
+        // If location is a simple value
+        product.location = req.body.location;
+      }
     }
+
+    // Also handle campus separately if it's sent directly
+    if (req.body.campus !== undefined) {
+      product.campus = req.body.campus;
+    }
+
+    // Rest of your validation code...
+    if (req.body.category && !VALID_CATEGORIES.includes(req.body.category)) {
+      return res.status(400).json({ success: false, message: 'Invalid category' });
+    }
+
+    if (req.body.subcategory && !VALID_SUBCATEGORIES.includes(req.body.subcategory)) {
+      return res.status(400).json({ success: false, message: 'Invalid subcategory' });
+    }
+
+    if (req.body.name && req.body.name !== product.name) {
+      let newSlug = generateSlug(req.body.name);
+      const existing = await Product.findOne({ slug: newSlug, _id: { $ne: product._id } });
+      if (existing) newSlug = `${newSlug}-${Date.now()}`;
+      product.slug = newSlug;
+    }
+
+    // Handle images
+    if (req.files && req.files.length > 0) {
+      try {
+        if (product.images?.length) {
+          await deleteMultipleProductImages(product.images);
+        }
+
+        const result = await uploadMultipleProductImages(req.files);
+        
+        // Add safety check for the result
+        if (result && Array.isArray(result) && result.length > 0) {
+          product.images = result.map(r => r && r.url).filter(Boolean);
+        } else {
+          product.images = [];
+        }
+      } catch (uploadError) {
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to upload new images',
+          error: uploadError.message
+        });
+      }
+    }
+
+    await product.save();
+
+    res.status(200).json({ success: true, message: 'Product updated', data: product });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ message: "Internal server error" });
   }
-
-  await product.save();
-  
-
-  res.status(200).json({ success: true, message: 'Product updated', data: product });
-}catch(error){
-  console.log(error)
-  res.status(500).json({message:"Internal server error"})
-}
 });
-
-
 
 
 // @desc    Delete product
