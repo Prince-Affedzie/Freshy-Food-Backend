@@ -182,6 +182,7 @@ const getProductById = asyncHandler(async (req, res) => {
 const updateProduct = asyncHandler(async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
+    console.log(req.body)
 
     if (!product) {
       return res.status(404).json({ success: false, message: 'Product not found' });
