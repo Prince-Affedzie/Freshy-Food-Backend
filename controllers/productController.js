@@ -205,7 +205,7 @@ const getProductById = asyncHandler(async (req, res) => {
     success: true,
     data: { 
       product, 
-      relatedProducts,
+     // relatedProducts,
       vendorProducts 
     }
   });
