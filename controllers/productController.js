@@ -391,7 +391,16 @@ const createProduct = asyncHandler(async (req, res) => {
   try {
     const {
       name, category, subcategory, brand, price, negotiable, condition,
-      description, campus, location, tags, countInStock
+      description, campus, location, tags, countInStock,
+      // New optional fields
+      specifications,
+      variations,
+      originalPrice,
+      discountPercentage,
+      discountStartDate,
+      discountEndDate,
+      isOnSale,
+      couponEligible,
     } = req.body;
 
     if (!name || !category || !price || !campus || !location?.campusArea) {
@@ -443,7 +452,94 @@ const createProduct = asyncHandler(async (req, res) => {
       });
     }
 
-    const product = await Product.create({
+    // ── Parse specifications (sent as JSON string) ──
+    let parsedSpecifications = {};
+    if (specifications) {
+      try {
+        parsedSpecifications = typeof specifications === 'string'
+          ? JSON.parse(specifications)
+          : specifications;
+      } catch (e) {
+        return res.status(400).json({ success: false, message: 'Invalid specifications format' });
+      }
+    }
+
+    // ── Parse variations (sent as JSON string) ──
+    let parsedVariations = [];
+    if (variations) {
+      try {
+        parsedVariations = typeof variations === 'string'
+          ? JSON.parse(variations)
+          : variations;
+      } catch (e) {
+        return res.status(400).json({ success: false, message: 'Invalid variations format' });
+      }
+
+      // Validate variations structure
+      if (!Array.isArray(parsedVariations)) {
+        return res.status(400).json({ success: false, message: 'Variations must be an array' });
+      }
+
+      for (const variation of parsedVariations) {
+        if (!variation.type) {
+          return res.status(400).json({ success: false, message: 'Each variation must have a type' });
+        }
+        if (!variation.options || !Array.isArray(variation.options) || variation.options.length === 0) {
+          return res.status(400).json({ success: false, message: 'Each variation must have at least one option' });
+        }
+        for (const option of variation.options) {
+          if (!option.name) {
+            return res.status(400).json({ success: false, message: 'Each option must have a name' });
+          }
+        }
+      }
+    }
+
+    // ── Build discountInfo object ──
+    const discountInfo = {};
+    const originalPriceNum = parseFloat(originalPrice);
+    const discountPercentageNum = parseFloat(discountPercentage);
+
+    if (!isNaN(originalPriceNum) && originalPriceNum > 0) {
+      discountInfo.originalPrice = originalPriceNum;
+    }
+
+    if (!isNaN(discountPercentageNum) && discountPercentageNum >= 0 && discountPercentageNum <= 100) {
+      discountInfo.discountPercentage = discountPercentageNum;
+    }
+
+    if (discountStartDate) {
+      const startDate = new Date(discountStartDate);
+      if (!isNaN(startDate.getTime())) {
+        discountInfo.discountStartDate = startDate;
+      }
+    }
+
+    if (discountEndDate) {
+      const endDate = new Date(discountEndDate);
+      if (!isNaN(endDate.getTime())) {
+        discountInfo.discountEndDate = endDate;
+      }
+    }
+
+    // isOnSale: set to true if discountPercentage is provided and > 0
+    if (isOnSale !== undefined) {
+      discountInfo.isOnSale = isOnSale === 'true' || isOnSale === true;
+    } else if (discountPercentageNum > 0) {
+      discountInfo.isOnSale = true;
+    }
+
+    // couponEligible
+    if (couponEligible !== undefined) {
+      discountInfo.couponEligible = couponEligible === 'true' || couponEligible === true;
+    } else {
+      discountInfo.couponEligible = true; // default
+    }
+
+    // Only include discountInfo if there's at least one field set
+    const hasDiscountInfo = Object.keys(discountInfo).length > 0;
+
+    const productData = {
       name,
       slug,
       category,
@@ -459,7 +555,22 @@ const createProduct = asyncHandler(async (req, res) => {
       tags: tags || [],
       countInStock: parseInt(countInStock) || 1,
       vendor: vendor._id,
-    });
+    };
+
+    // Add optional fields only if they have values
+    if (parsedVariations.length > 0) {
+      productData.variations = parsedVariations;
+    }
+
+    if (Object.keys(parsedSpecifications).length > 0) {
+      productData.specifications = parsedSpecifications;
+    }
+
+    if (hasDiscountInfo) {
+      productData.discountInfo = discountInfo;
+    }
+
+    const product = await Product.create(productData);
 
     vendor.products.push(product._id);
     await vendor.save();
@@ -477,69 +588,204 @@ const createProduct = asyncHandler(async (req, res) => {
 // @route   PUT /api/products/:id
 // @access  Private/Vendor (owner)
 const updateProduct = asyncHandler(async (req, res) => {
-  try{
-  const product = await Product.findById(req.params.id);
+  try {
+    const product = await Product.findById(req.params.id);
 
-  if (!product) {
-    return res.status(404).json({ success: false, message: 'Product not found' });
-  }
-
-  const vendor = await Vendor.findOne({ user: req.user.id });
-  if (!vendor || product.vendor.toString() !== vendor._id.toString()) {
-    return res.status(403).json({ success: false, message: 'Not authorized to update this product' });
-  }
-
-  const updatableFields = [
-    'name', 'category', 'subcategory', 'brand', 'price', 'negotiable', 'condition',
-    'description', 'campus', 'location', 'tags', 'countInStock', 'isAvailable'
-  ];
-
-  updatableFields.forEach(field => {
-    if (req.body[field] !== undefined) {
-      product[field] = req.body[field];
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
     }
-  });
 
-  if (req.body.category && !VALID_CATEGORIES.includes(req.body.category)) {
-    return res.status(400).json({ success: false, message: 'Invalid category' });
-  }
+    const vendor = await Vendor.findOne({ user: req.user.id });
+    if (!vendor || product.vendor.toString() !== vendor._id.toString()) {
+      return res.status(403).json({ success: false, message: 'Not authorized to update this product' });
+    }
 
-  if (req.body.subcategory && !VALID_SUBCATEGORIES.includes(req.body.subcategory)) {
-    return res.status(400).json({ success: false, message: 'Invalid subcategory' });
-  }
+    const updatableFields = [
+      'name', 'category', 'subcategory', 'brand', 'price', 'negotiable', 'condition',
+      'description', 'campus', 'location', 'tags', 'countInStock', 'isAvailable'
+    ];
 
-  if (req.body.name && req.body.name !== product.name) {
-    let newSlug = generateSlug(req.body.name);
-    const existing = await Product.findOne({ slug: newSlug, _id: { $ne: product._id } });
-    if (existing) newSlug = `${newSlug}-${Date.now()}`;
-    product.slug = newSlug;
-  }
-
-  if (req.files && req.files.length > 0) {
-    try {
-      if (product.images?.length) {
-        await deleteMultipleProductImages(product.images);
+    updatableFields.forEach(field => {
+      if (req.body[field] !== undefined) {
+        product[field] = req.body[field];
       }
+    });
 
-      const result = await uploadMultipleProductImages(req.files);
-      product.images = result.map(r => r.url);
-    } catch (uploadError) {
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to upload new images',
-        error: uploadError.message
-      });
+    if (req.body.category && !VALID_CATEGORIES.includes(req.body.category)) {
+      return res.status(400).json({ success: false, message: 'Invalid category' });
     }
+
+    if (req.body.subcategory && !VALID_SUBCATEGORIES.includes(req.body.subcategory)) {
+      return res.status(400).json({ success: false, message: 'Invalid subcategory' });
+    }
+
+    if (req.body.name && req.body.name !== product.name) {
+      let newSlug = generateSlug(req.body.name);
+      const existing = await Product.findOne({ slug: newSlug, _id: { $ne: product._id } });
+      if (existing) newSlug = `${newSlug}-${Date.now()}`;
+      product.slug = newSlug;
+    }
+
+    // ── Handle specifications ──────────────────────────────────────────────
+    if (req.body.specifications !== undefined) {
+      try {
+        const specs = typeof req.body.specifications === 'string'
+          ? JSON.parse(req.body.specifications)
+          : req.body.specifications;
+
+        if (specs === null || specs === '') {
+          product.specifications = {};
+        } else if (typeof specs === 'object' && !Array.isArray(specs)) {
+          product.specifications = specs;
+        } else {
+          return res.status(400).json({ success: false, message: 'Specifications must be an object' });
+        }
+      } catch (e) {
+        return res.status(400).json({ success: false, message: 'Invalid specifications format' });
+      }
+    }
+
+    // ── Handle variations ──────────────────────────────────────────────────
+    if (req.body.variations !== undefined) {
+      try {
+        const vars = typeof req.body.variations === 'string'
+          ? JSON.parse(req.body.variations)
+          : req.body.variations;
+
+        if (vars === null || vars === '') {
+          product.variations = [];
+        } else if (Array.isArray(vars)) {
+          // Validate structure
+          for (const variation of vars) {
+            if (!variation.type) {
+              return res.status(400).json({ success: false, message: 'Each variation must have a type' });
+            }
+            if (!variation.options || !Array.isArray(variation.options) || variation.options.length === 0) {
+              return res.status(400).json({ success: false, message: 'Each variation must have at least one option' });
+            }
+          }
+          product.variations = vars;
+        } else {
+          return res.status(400).json({ success: false, message: 'Variations must be an array' });
+        }
+      } catch (e) {
+        return res.status(400).json({ success: false, message: 'Invalid variations format' });
+      }
+    }
+
+    // ── Handle discountInfo ────────────────────────────────────────────────
+    if (req.body.discountInfo !== undefined) {
+      try {
+        const discount = typeof req.body.discountInfo === 'string'
+          ? JSON.parse(req.body.discountInfo)
+          : req.body.discountInfo;
+
+        if (discount === null || discount === '') {
+          product.discountInfo = {};
+        } else if (typeof discount === 'object') {
+          // Merge with existing or set new
+          product.discountInfo = { ...(product.discountInfo || {}), ...discount };
+
+          // Type conversions for safety
+          if (product.discountInfo.originalPrice !== undefined) {
+            product.discountInfo.originalPrice = parseFloat(product.discountInfo.originalPrice) || undefined;
+          }
+          if (product.discountInfo.discountPercentage !== undefined) {
+            const pct = parseFloat(product.discountInfo.discountPercentage);
+            if (!isNaN(pct) && pct >= 0 && pct <= 100) {
+              product.discountInfo.discountPercentage = pct;
+            }
+          }
+          if (product.discountInfo.discountStartDate) {
+            const d = new Date(product.discountInfo.discountStartDate);
+            product.discountInfo.discountStartDate = !isNaN(d.getTime()) ? d : undefined;
+          }
+          if (product.discountInfo.discountEndDate) {
+            const d = new Date(product.discountInfo.discountEndDate);
+            product.discountInfo.discountEndDate = !isNaN(d.getTime()) ? d : undefined;
+          }
+          if (product.discountInfo.isOnSale !== undefined) {
+            product.discountInfo.isOnSale = product.discountInfo.isOnSale === true || product.discountInfo.isOnSale === 'true';
+          }
+          if (product.discountInfo.couponEligible !== undefined) {
+            product.discountInfo.couponEligible = product.discountInfo.couponEligible === true || product.discountInfo.couponEligible === 'true';
+          }
+
+          // Auto-set isOnSale if discountPercentage > 0
+          if (product.discountInfo.discountPercentage > 0 && product.discountInfo.isOnSale === undefined) {
+            product.discountInfo.isOnSale = true;
+          }
+        }
+      } catch (e) {
+        return res.status(400).json({ success: false, message: 'Invalid discountInfo format' });
+      }
+    } else {
+      // Handle individual discount fields if sent separately
+      let discountModified = false;
+      const discountFields = ['originalPrice', 'discountPercentage', 'discountStartDate', 'discountEndDate', 'isOnSale', 'couponEligible'];
+
+      discountFields.forEach(field => {
+        if (req.body[field] !== undefined) {
+          if (!product.discountInfo) product.discountInfo = {};
+          discountModified = true;
+
+          switch (field) {
+            case 'originalPrice':
+              product.discountInfo.originalPrice = parseFloat(req.body[field]) || undefined;
+              break;
+            case 'discountPercentage':
+              const pct = parseFloat(req.body[field]);
+              if (!isNaN(pct) && pct >= 0 && pct <= 100) {
+                product.discountInfo.discountPercentage = pct;
+              }
+              break;
+            case 'discountStartDate':
+            case 'discountEndDate':
+              const d = new Date(req.body[field]);
+              if (!isNaN(d.getTime())) {
+                product.discountInfo[field] = d;
+              }
+              break;
+            case 'isOnSale':
+            case 'couponEligible':
+              product.discountInfo[field] = req.body[field] === 'true' || req.body[field] === true;
+              break;
+          }
+        }
+      });
+
+      // Auto-set isOnSale based on discountPercentage
+      if (discountModified && product.discountInfo?.discountPercentage > 0 && product.discountInfo?.isOnSale === undefined) {
+        product.discountInfo.isOnSale = true;
+      }
+    }
+
+    // ── Handle image uploads ───────────────────────────────────────────────
+    if (req.files && req.files.length > 0) {
+      try {
+        if (product.images?.length) {
+          await deleteMultipleProductImages(product.images);
+        }
+
+        const result = await uploadMultipleProductImages(req.files);
+        product.images = result.map(r => r.url);
+      } catch (uploadError) {
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to upload new images',
+          error: uploadError.message
+        });
+      }
+    }
+
+    await product.save();
+    await invalidateProductCache();
+
+    res.status(200).json({ success: true, message: 'Product updated', data: product });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ message: "Internal server error" });
   }
-
-  await product.save();
-  await invalidateProductCache();
-
-  res.status(200).json({ success: true, message: 'Product updated', data: product });
-}catch(error){
-  console.log(error)
-  res.status(500).json({message:"Internal server error"})
-}
 });
 
 // @desc    Delete product

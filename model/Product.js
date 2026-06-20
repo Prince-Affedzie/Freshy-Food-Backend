@@ -184,6 +184,51 @@ const productSchema = new mongoose.Schema(
       maxlength: 2000,
     },
 
+
+    specifications: {
+      type: Map,
+      of: String,
+      default: {}
+    },
+
+    variations: [{
+      type: {
+        type: String, // e.g., "Size", "Color", "Flavor"
+      },
+      options: [{
+        name: String, // e.g., "Large", "Red", "Chocolate"
+        price: Number,
+        countInStock: Number,
+        sku: String,
+      }],
+    }],
+
+
+    discountInfo: {
+      originalPrice: {
+        type: Number,
+      },
+      discountPercentage: {
+        type: Number,
+        min: 0,
+        max: 100,
+      },
+      discountStartDate: {
+        type: Date,
+      },
+      discountEndDate: {
+        type: Date,
+      },
+      isOnSale: {
+        type: Boolean,
+        default: false,
+      },
+      couponEligible: {
+        type: Boolean,
+        default: true,
+      },
+    },
+
     campus: {
       type: String,
       required: true,
