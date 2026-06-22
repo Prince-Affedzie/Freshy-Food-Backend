@@ -123,7 +123,7 @@ const vendorSchema = new mongoose.Schema({
 
   bio: {
     type: String,
-    maxlength: 500,
+    maxlength: 1000,
   },
 
   socialLinks: {
