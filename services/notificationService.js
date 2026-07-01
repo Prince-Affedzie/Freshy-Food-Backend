@@ -227,6 +227,49 @@ async sendCancellationNotification(userId,order, reason) {
 }
 
 
+async adminNotifyUsersByRole({ role, title, message }) {
+  try {
+    const query =
+      role === 'all'
+        ? { role: { $in: ['customer', 'vendor'] } }
+        : { role };
+
+    const users = await User.find(query).select('_id');
+
+    for (const user of users) {
+      await this.sendNotification({
+        userId: user._id,
+        title: this.formatAdminTitle(title),
+        message
+      });
+    }
+
+    console.log(`Admin notification sent to ${users.length} ${role} users`);
+  } catch (error) {
+    console.error('Admin notify users by role error:', error);
+  }
+}
+
+
+async adminBroadcastNotification({ title, message }) {
+  try {
+    const users = await User.find({}).select('_id');
+
+    for (const user of users) {
+      await this.sendNotification({
+        userId: user._id,
+        title: this.formatAdminTitle(title),
+        message
+      });
+    }
+
+    console.log(`Admin broadcast sent to ${users.length} users`);
+  } catch (error) {
+    console.error('Admin broadcast notification error:', error);
+  }
+}
+
+
 }
 
 module.exports = NotificationService;

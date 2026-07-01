@@ -4,8 +4,10 @@ const {getAllUsers,
   updateUser,
   toggleAdmin,
   deleteUser} = require("../controllers/adminUserController")
-  const { getAdminDashboardData,getProductById,
-    deleteProduct,updateProduct,getVendors,getVendor,updateVendor,deleteVendor} = require('../controllers/adminMainController')
+  const { getAdminDashboardData,getProductById,notifyUsersByRole,
+    broadcastNotification,
+    deleteProduct,updateProduct,getVendors,getVendor,updateVendor,deleteVendor
+  } = require('../controllers/adminMainController')
   const {getPaymentOverview,
   getAllPayments,
   getPaymentById,
@@ -47,6 +49,11 @@ adminRoutes.put('/admin/vendor/:id',upload.fields([
 ]),updateVendor)
 
 adminRoutes.delete('/admin/vendor/:id',deleteVendor)
+
+// notification Routes
+adminRoutes.post('/admin/notifications/role',notifyUsersByRole);
+
+adminRoutes.post('/admin/notifications/broadcast',broadcastNotification);
 
 
 

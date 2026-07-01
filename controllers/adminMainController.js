@@ -491,6 +491,82 @@ const deleteVendor = async (req, res) => {
 
 
 
+ const  notifyUsersByRole = async(req, res) =>{
+    try {
+      const { role, title, message } = req.body;
+      const notificationService = req.app.get("notificationService");
+
+      if (!role || !title || !message) {
+        return res.status(400).json({
+          success: false,
+          message: 'role, title and message are required.',
+        });
+      }
+
+      const allowedRoles = ['customer', 'vendor', 'all'];
+
+      if (!allowedRoles.includes(role)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid role.',
+        });
+      }
+
+      await notificationService.adminNotifyUsersByRole({
+        role,
+        title,
+        message,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: `Notification sent successfully to ${role} users.`,
+      });
+    } catch (error) {
+      console.error(error);
+
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send notification.',
+      });
+    }
+  }
+
+  /**
+   * Broadcast notification to every user
+   */
+const  broadcastNotification = async(req, res) =>{
+    try {
+      const { title, message } = req.body;
+      const notificationService = req.app.get("notificationService");
+
+      if (!title || !message) {
+        return res.status(400).json({
+          success: false,
+          message: 'title and message are required.',
+        });
+      }
+
+      await notificationService.adminBroadcastNotification({
+        title,
+        message,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Broadcast notification sent successfully.',
+      });
+    } catch (error) {
+      console.error(error);
+
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send broadcast notification.',
+      });
+    }
+  }
+
+
 
 
 module.exports = {
@@ -502,4 +578,6 @@ module.exports = {
   getVendor,
   updateVendor,
   deleteVendor,
+  notifyUsersByRole,
+  broadcastNotification,
 };
