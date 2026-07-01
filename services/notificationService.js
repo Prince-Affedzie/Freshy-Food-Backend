@@ -115,11 +115,11 @@ async notifyAdminsNewUser(user) {
   }
 
 
-  async sendWelcomeNotification(userId) {
+ async sendWelcomeNotification(userId) {
   return this.sendNotification({
     userId,
     title: "🎉 Welcome to CediMart",
-    message: "Your kitchen just got easier. Start ordering fresh groceries and essentials anytime!",
+    message: "Your campus marketplace is here! Shop, sell, and connect with trusted students around you.",
   });
 }
 
