@@ -18,8 +18,7 @@ const sendPushNotification= async(pushToken, title, body) => {
   try {
     const tickets = await expo.sendPushNotificationsAsync([message]);
 
-   console.log("Expo tickets:", tickets);
-   console.log("Notification sent successfully");
+   
   } catch (err) {
     console.error("Error sending push notification:", err);
   }
