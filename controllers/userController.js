@@ -260,27 +260,27 @@ const vendor_login = async(req,res)=>{
 }
 
 
-const logout =async(req,res)=>{
-    let token
-    if (req.cookies && req.cookies.token) {
-      token = req.cookies.token;
-    }
+const logout = async (req, res) => {
+  try {
+    // 1. Clear the cookie by its NAME ('token'), not the token string value
+    res.clearCookie('token', {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'Strict'
+    });
 
-    // 2. If no cookie, check Authorization header (for mobile app)
-    else if (req.headers.authorization && req.headers.authorization.startsWith("Bearer ")) {
-      token = req.headers.authorization.split(" ")[1];
-    }
-    //console.log(req.headers.authorization.split(" ")[1])
-    try{
-    if(!token){
-        return res.status(400).json({message:"No token Provided"})
-    }
-    await res.clearCookie(token,{httpOnly:true,secure:true,sameSite:'Strict'})
-    res.status(200).json({message:"Logout Succesful"})
-}catch(error){
-    console.log(error)
-}
-}
+    // 2. Always return a 200 OK success message.
+    // Even if they didn't have a token, our goal is achieved: they are logged out.
+    return res.status(200).json({ 
+      success: true, 
+      message: "Logout successful" 
+    });
+
+  } catch (error) {
+    console.error("Logout Error:", error);
+    return res.status(500).json({ message: "An error occurred during logout" });
+  }
+};
 
 
 const updateUser = async(req,res)=>{

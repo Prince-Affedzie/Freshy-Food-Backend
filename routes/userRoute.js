@@ -13,7 +13,7 @@ userRoute.post('/login',login)
 userRoute.post('/vendor/login',vendor_login)
 userRoute.post('/google_sign_up',signUpByGoogle)
 userRoute.post('/google_login',google_login)
-userRoute.post('/logout',auth,logout)
+userRoute.post('/logout',logout)
 userRoute.put('/update-account',auth,updateUser)
 userRoute.delete('/delete-account',auth,deleteAccount)
 
