@@ -219,7 +219,7 @@ const login = async(req,res)=>{
         }
         const token = jwt.sign({id:findUser._id,role:findUser.role},process.env.token,{expiresIn:"7d"})
         res.cookie("token",token,{httpOnly:true,sameSite:"None",secure:true})
-        console.log("Login Successful",findUser)
+        
         res.status(200).json({message:"Login Successful",role:findUser.role,user:findUser,token:token})
 
     }catch(err){

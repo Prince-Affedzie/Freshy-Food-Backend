@@ -25,6 +25,9 @@ const paymentRoute = require('./routes/paymentRoute')
 const adminRoutes = require('./routes/adminRoutes')
 const authRouter = require('./routes/authRoute')
 const vendorRouter = require('./routes/vendorRoutes')
+const chatRoute = require('./routes/chatRoutes')
+
+const {messagingSocket} = require("./services/messagingService")
 
 const redis = require("./config/redis");
 
@@ -66,6 +69,7 @@ const io = new Server(server,{
 })
 
 io.use(authenticateSocketConnection)
+const notificationService = new NotificationService(io);
 
 
 io.on('connection',(socket)=>{
@@ -78,8 +82,11 @@ io.on('connection',(socket)=>{
         console.log("User Disconnected")
     })
 
+    messagingSocket(io, socket, notificationService);
+
 })
-const notificationService = new NotificationService(io);
+
+
 
 app.use('/api',packagerouter)
 app.use('/api',productrouter)
@@ -90,6 +97,7 @@ app.use('/api',paymentRoute)
 app.use('/api',adminRoutes)
 app.use('/api',authRouter)
 app.use('/api',vendorRouter)
+app.use('/api',chatRoute)
 app.set('notificationService', notificationService);
 
 

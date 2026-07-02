@@ -279,7 +279,7 @@ const getVendorProducts = async(req,res)=>{
 
 const getMyVendorProfile = async(req,res)=>{
   try{
-    console.log("Receiving Get Profile Request")
+    
   
     const user = await User.findById(req.user.id)
     const vendor = await Vendor.findOne({user:user._id}).populate('products')
@@ -287,7 +287,7 @@ const getMyVendorProfile = async(req,res)=>{
     if(!vendor){
       return res.status(404).json({message:"Vendor not Found"})
     }
-    console.log(vendor)
+    
     return res.status(200).json(vendor)
 
   } catch (error) {
@@ -299,7 +299,7 @@ const getMyVendorProfile = async(req,res)=>{
 
 const updateMyVendorProfile = async (req, res) => {
   try {
-    console.log("Receiving Update Profile Request");
+   
     
     const user = await User.findById(req.user.id);
     const vendor = await Vendor.findOne({ user: user._id });
