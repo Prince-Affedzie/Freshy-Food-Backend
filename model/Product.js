@@ -248,7 +248,7 @@ const productSchema = new mongoose.Schema(
     location: {
       campusArea: {
         type: String,
-        required: true,
+        required: false,
       },
       hostel: {
         type: String,
