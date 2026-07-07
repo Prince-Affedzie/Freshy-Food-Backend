@@ -119,7 +119,7 @@ const sendVendorOTP = async (req, res) => {
   try {
     const message = `Your CediMart verification code is: ${otp}. Valid for 5 minutes. Please don't share this code with anyone.`;
 
-    await axios.post(
+   const response =  await axios.post(
       "https://sms.nalosolutions.com/smsbackend/Resl_Nalo/send-message/",
       {
         key: NALO_KEY,
@@ -129,6 +129,7 @@ const sendVendorOTP = async (req, res) => {
       }
     );
 
+    console.log("NALO Response:", response.data);
     res.status(200).json({ success: true, message: "OTP sent" });
   } catch (error) {
     console.log(error)
