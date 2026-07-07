@@ -60,7 +60,7 @@ const sendOTP = async (req, res) => {
 );
 
   try {
-    const message = `Your CediMart verificaction code is: ${otp}. Valid for 5 minutes. Please don't share this code with anyone.`;
+    const message = `Your CediMart verification code is: ${otp}. Valid for 5 minutes. Please don't share this code with anyone.`;
 
     await axios.post(
       "https://sms.nalosolutions.com/smsbackend/Resl_Nalo/send-message/",
@@ -117,7 +117,7 @@ const sendVendorOTP = async (req, res) => {
 );
 
   try {
-    const message = `Your CediMart verificaction code is: ${otp}. Valid for 5 minutes. Please don't share this code with anyone.`;
+    const message = `Your CediMart verification code is: ${otp}. Valid for 5 minutes. Please don't share this code with anyone.`;
 
     await axios.post(
       "https://sms.nalosolutions.com/smsbackend/Resl_Nalo/send-message/",
