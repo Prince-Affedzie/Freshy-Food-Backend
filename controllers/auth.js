@@ -5,7 +5,10 @@ const User = require('../model/User')
 const redis = require("../config/redis");
 
 const NALO_KEY = process.env.NALO_API_KEY;
+const BULK_SMS_API_KEY = process.env.BULK_SMS_API_KEY
 const SENDER_ID = "CediMart";
+
+
 
 
 const formatPhoneNumber = (phone) => {
@@ -21,17 +24,16 @@ const formatPhoneNumber = (phone) => {
 
 const sendOTP = async (req, res) => {
   const { phoneNumber } = req.body;
-
+  console.log("request received");
   if (!phoneNumber) {
     return res.status(400).json({ error: "Phone number is required" });
   }
 
-  const user = await User.findOne({phone: phoneNumber });
+  const user = await User.findOne({ phone: phoneNumber });
 
   if (!user) {
     return res.status(404).json({ error: "User not found" });
   }
-
 
   const formattedPhone = formatPhoneNumber(phoneNumber);
 
@@ -46,23 +48,29 @@ const sendOTP = async (req, res) => {
 
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
- 
   const hashedOTP = crypto.createHash("sha256").update(otp).digest("hex");
 
   // Store in Redis with TTL (5 mins)
-    await redis.set(
+  await redis.set(
     redisKey,
     JSON.stringify({
-    otp: hashedOTP,
-    attempts: 0,
+      otp: hashedOTP,
+      attempts: 0,
     }),
-  "EX", 300
-);
+    "EX", 180
+  );
 
   try {
-    const message = `Your CediMart verification code is: ${otp}. Valid for 5 minutes. Please don't share this code with anyone.`;
+    const templates = [
+      `This is your CediMart verification code is ${otp}. It expires in 3 minutes. Please don't share this code with anyone.`,
+      `CediMart code: ${otp}. Valid for 3 minutes. For your security, never share this code with anyone.`,
+      `Use ${otp} to verify your CediMart account. This code expires in 3 minutes and is confidential — do not share it.`,
+      `Your CediMart OTP is ${otp}. It's valid for 3 minutes. Keep this code private and do not share it with anyone.`,
+    ];
 
-    await axios.post(
+    const message = templates[Math.floor(Math.random() * templates.length)];
+
+    const response = await axios.post(
       "https://sms.nalosolutions.com/smsbackend/Resl_Nalo/send-message/",
       {
         key: NALO_KEY,
@@ -71,19 +79,20 @@ const sendOTP = async (req, res) => {
         sender_id: SENDER_ID,
       }
     );
-
+    console.log("NALO Response:", response.data);
     res.status(200).json({ success: true, message: "OTP sent" });
   } catch (error) {
-    console.log(error)
+    await redis.del(redisKey);
+    console.log(error);
     console.error(error.response?.data || error.message);
     res.status(500).json({ error: "Failed to send SMS" });
   }
 };
 
 
-
 const sendVendorOTP = async (req, res) => {
   const { phoneNumber } = req.body;
+  console.log("request received")
 
   if (!phoneNumber) {
     return res.status(400).json({ error: "Phone number is required" });
@@ -117,7 +126,7 @@ const sendVendorOTP = async (req, res) => {
 );
 
   try {
-    const message = `Your CediMart verification code is: ${otp}. Valid for 5 minutes. Please don't share this code with anyone.`;
+    const message = `Your CediMart verification code is: ${otp}. Valid for 3 minutes. Please don't share this code with anyone.`;
 
    const response =  await axios.post(
       "https://sms.nalosolutions.com/smsbackend/Resl_Nalo/send-message/",
@@ -132,6 +141,7 @@ const sendVendorOTP = async (req, res) => {
     console.log("NALO Response:", response.data);
     res.status(200).json({ success: true, message: "OTP sent" });
   } catch (error) {
+    await redis.del(redisKey);
     console.log(error)
     console.error(error.response?.data || error.message);
     res.status(500).json({ error: "Failed to send SMS" });

@@ -239,18 +239,18 @@ const vendor_login = async(req,res)=>{
             return res.status(400).json({message:"All fields are required"})
         }
        
-        const findUser = await User.findOne({phone:phone})
-        const vendor = await Vendor.findOne({user:findUser._id})
+        //const findUser = await User.findOne({phone:phone})
+        const vendor = await Vendor.findOne({phone:phone}).populate('user')
         
-        console.log(findUser)
-        if(!findUser || !vendor){
+        console.log('vendor',vendor)
+        if(!vendor){
             return res.status(404).json({message: "Account doesn't Exist. Please sign up first"})
         }
 
-       const token = jwt.sign({id:findUser._id,role:findUser.role,vendor_id:vendor._id},process.env.token,{expiresIn:"7d"})
+       const token = jwt.sign({id:vendor.user._id,role:vendor.user.role,vendor_id:vendor._id},process.env.token,{expiresIn:"7d"})
        
         res.cookie("token",token,{httpOnly:true,sameSite:"None",secure:true})
-        res.status(200).json({message:"Login Successful",role:findUser.role,user:findUser,token:token})
+        res.status(200).json({message:"Login Successful",role:vendor.user.role,user:vendor.user,token:token})
 
     }catch(err){
         console.log(err)

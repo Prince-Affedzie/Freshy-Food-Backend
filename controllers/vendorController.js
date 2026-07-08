@@ -282,7 +282,9 @@ const getMyVendorProfile = async(req,res)=>{
     
   
     const user = await User.findById(req.user.id)
+    console.log('user',user)
     const vendor = await Vendor.findOne({user:user._id}).populate('products')
+    console.log(vendor)
     
     if(!vendor){
       return res.status(404).json({message:"Vendor not Found"})
