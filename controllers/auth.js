@@ -62,7 +62,7 @@ const sendOTP = async (req, res) => {
 
   try {
     const templates = [
-      `This is your CediMart verification code is ${otp}. It expires in 3 minutes. Please don't share this code with anyone.`,
+      `This is your CediMart verification code  ${otp}. It expires in 3 minutes. Please don't share this code with anyone.`,
       `CediMart code: ${otp}. Valid for 3 minutes. For your security, never share this code with anyone.`,
       `Use ${otp} to verify your CediMart account. This code expires in 3 minutes and is confidential — do not share it.`,
       `Your CediMart OTP is ${otp}. It's valid for 3 minutes. Keep this code private and do not share it with anyone.`,

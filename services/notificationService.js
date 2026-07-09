@@ -14,7 +14,7 @@ class NotificationService {
   }
 
   formatAdminTitle(title) {
-    return title?.startsWith('📢') ? title : `📢 ${title}`;
+    return title?.startsWith('📢') ? title : `${title}`;
   }
 
   async sendNotification({ userId, title, message }) {
