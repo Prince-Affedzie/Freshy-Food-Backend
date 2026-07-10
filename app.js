@@ -32,8 +32,8 @@ const {messagingSocket} = require("./services/messagingService")
 const redis = require("./config/redis");
 
 async function testRedis() {
-  await redis.set("FreshyFood_Factory", "FreshyFood");
-  const value = await redis.get("FreshyFood_Factory");
+  await redis.set("Cedi_Mart", "CediMart");
+  const value = await redis.get("Cedi_Mart");
 
   console.log(value);
 }
