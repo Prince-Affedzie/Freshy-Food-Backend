@@ -247,7 +247,7 @@ const getProductsByCategory = asyncHandler(async (req, res) => {
   };
 
   const pageNum = Math.max(parseInt(page) || 1, 1);
-  const limitNum = Math.min(parseInt(limit) || 20, 50);
+  const limitNum = Math.min(parseInt(limit) || 20, 200);
   const skip = (pageNum - 1) * limitNum;
   console.log(query)
 
@@ -255,6 +255,7 @@ const getProductsByCategory = asyncHandler(async (req, res) => {
     Product.find(query)
       .populate('vendor', 'name phone')
       .sort(sortOptions[sort] || sortOptions.newest)
+      .skip(skip)
       
       .limit(limitNum)
       .select("-__v"),
