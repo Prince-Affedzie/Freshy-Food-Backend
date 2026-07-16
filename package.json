@@ -8,6 +8,8 @@
 
    "dependencies": {
 
+      "@google/genai": "^2.12.0",
+
       "@supabase/supabase-js": "^2.105.1",
 
       "apple-signin-auth": "^2.0.0",
@@ -34,6 +36,8 @@
 
       "express-async-handler": "^1.2.0",
 
+      "express-rate-limit": "^8.5.2",
+
       "firebase-admin": "^13.8.0",
 
       "google-auth-library": "^10.5.0",
@@ -46,6 +50,8 @@
 
       "multer": "^2.0.2",
 
+      "openai": "^6.47.0",
+
       "resend": "^6.9.3",
 
       "slugify": "^1.6.6",
@@ -54,7 +60,11 @@
 
       "uuid": "^13.0.0",
 
-      "ws": "^8.19.0"
+      "ws": "^8.19.0",
+
+      "zod": "^4.4.3",
+
+      "zod-to-json-schema": "^3.25.2"
 
    }
 

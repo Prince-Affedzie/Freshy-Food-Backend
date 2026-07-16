@@ -26,6 +26,7 @@ const adminRoutes = require('./routes/adminRoutes')
 const authRouter = require('./routes/authRoute')
 const vendorRouter = require('./routes/vendorRoutes')
 const chatRoute = require('./routes/chatRoutes')
+const aiRouter = require('./routes/aiRoute')
 
 const {messagingSocket} = require("./services/messagingService")
 
@@ -87,7 +88,7 @@ io.on('connection',(socket)=>{
 })
 
 
-
+app.use("/api",aiRouter );
 app.use('/api',packagerouter)
 app.use('/api',productrouter)
 app.use('/api',orderrouter)
