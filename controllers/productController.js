@@ -221,11 +221,6 @@ const getProductsByCategory = asyncHandler(async (req, res) => {
   const { subcategory, campus, sort = "newest", page = 1, limit = 20 } = req.query;
   try{
 
-  if (!VALID_CATEGORIES.includes(category)) {
-   
-    return res.status(400).json({ success: false, message: 'Invalid category', validCategories: VALID_CATEGORIES });
-  }
-
   const cacheKey = `products:category:${category}:${subcategory || 'all'}:${campus || 'all'}:${sort}:${page}:${limit}`;
 
   /*try {
@@ -300,10 +295,6 @@ const getProductsByCategory = asyncHandler(async (req, res) => {
 // @access  Public
 const getSubcategoriesByCategory = asyncHandler(async (req, res) => {
   const { category } = req.params;
-
-  if (!VALID_CATEGORIES.includes(category)) {
-    return res.status(400).json({ success: false, message: 'Invalid category' });
-  }
 
   const subcategories = await Product.distinct('subcategory', { category, isAvailable: true });
 

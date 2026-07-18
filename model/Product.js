@@ -35,6 +35,7 @@ const productSchema = new mongoose.Schema(
         "tickets and events",
         'transport and logistics',
         "services",
+        "groceries",
         "other",
       ],
     },
