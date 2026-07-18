@@ -87,7 +87,6 @@ io.on('connection',(socket)=>{
 
 })
 
-
 app.use("/api",aiRouter );
 app.use('/api',packagerouter)
 app.use('/api',productrouter)

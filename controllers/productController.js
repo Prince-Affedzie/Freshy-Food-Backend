@@ -423,14 +423,7 @@ const createProduct = asyncHandler(async (req, res) => {
       return res.status(404).json({ success: false, message: 'Vendor profile not found' });
     }
 
-    if (!VALID_CATEGORIES.includes(category)) {
-      return res.status(400).json({ success: false, message: 'Invalid category', validCategories: VALID_CATEGORIES });
-    }
-
-    if (subcategory && !VALID_SUBCATEGORIES.includes(subcategory)) {
-      return res.status(400).json({ success: false, message: 'Invalid subcategory', validSubcategories: VALID_SUBCATEGORIES });
-    }
-
+    
     const priceNum = parseFloat(price);
     if (isNaN(priceNum) || priceNum < 0) {
       return res.status(400).json({ success: false, message: 'Price must be a valid non-negative number' });
@@ -611,14 +604,6 @@ const updateProduct = asyncHandler(async (req, res) => {
         product[field] = req.body[field];
       }
     });
-
-    if (req.body.category && !VALID_CATEGORIES.includes(req.body.category)) {
-      return res.status(400).json({ success: false, message: 'Invalid category' });
-    }
-
-    if (req.body.subcategory && !VALID_SUBCATEGORIES.includes(req.body.subcategory)) {
-      return res.status(400).json({ success: false, message: 'Invalid subcategory' });
-    }
 
     if (req.body.name && req.body.name !== product.name) {
       let newSlug = generateSlug(req.body.name);

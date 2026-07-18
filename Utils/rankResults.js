@@ -1,9 +1,10 @@
 function rankResults(products, intent) {
   const now = Date.now();
 
-  // Extract search keywords from the user's intent query (e.g., "shoe", "nice shoe")
-  const queryTerms = intent.query 
-    ? intent.query.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/) 
+  // 1. FALLBACK to searchTerm if intent.query is empty
+  const searchQuery = intent.query || intent.searchTerm || "";
+  const queryTerms = searchQuery 
+    ? searchQuery.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/) 
     : [];
 
   return products
@@ -13,31 +14,41 @@ function rankResults(products, intent) {
       const subcategory = p.subcategory ? p.subcategory.toLowerCase() : "";
       const category = p.category ? p.category.toLowerCase() : "";
       const description = p.description ? p.description.toLowerCase() : "";
+      const brand = p.brand ? p.brand.toLowerCase() : "";
 
       // ==========================================
-      // 1. TEXT RELEVANCY BOOST (Highest Weight)
+      // 1. TEXT RELEVANCY BOOST
       // ==========================================
       let matchScore = 0;
       queryTerms.forEach((term) => {
-        // Skip tiny filler words like "a", "to", "for"
-        if (term.length <= 2) return; 
+        if (term.length <= 1) return; // Skip single characters
+
+        let termMatched = false;
 
         if (productName.includes(term)) {
-          matchScore += 80; // High reward for name matches
+          matchScore += 80;
+          termMatched = true;
         }
         if (subcategory.includes(term)) {
-          matchScore += 60; // Medium-high reward for subcategory matches
+          matchScore += 60;
+          termMatched = true;
         }
         if (category.includes(term)) {
-          matchScore += 20; // Slight reward for general category
+          matchScore += 20;
+          termMatched = true;
         }
         if (description.includes(term)) {
-          matchScore += 10; // Small reward for description matches
+          matchScore += 10;
+          termMatched = true;
+        }
+        // Brand Match (e.g., matching "iphone" queries to "Apple" brand products)
+        if (brand.includes(term) || (term === 'iphone' && brand === 'apple')) {
+          matchScore += 40;
+          termMatched = true;
         }
       });
 
-      // If the query was explicit but this product didn't match any key terms, 
-      // we heavily penalize it so it sinks to the bottom.
+      // If the user searched for something specific but this item has 0 match score
       if (queryTerms.length > 0 && matchScore === 0) {
         score -= 150; 
       } else {
@@ -50,7 +61,9 @@ function rankResults(products, intent) {
       if (intent.priceMax) {
         const sweetSpot = intent.priceMax * 0.85;
         const diff = Math.abs(p.price - sweetSpot);
-        score += Math.max(0, 100 - diff / 10);
+        // Safely add bonus; ensure it never subtracts below 0
+        const budgetBonus = Math.max(0, 100 - (diff / 10));
+        score += budgetBonus;
       }
 
       // ==========================================
@@ -58,14 +71,8 @@ function rankResults(products, intent) {
       // ==========================================
       if (["new", "like-new"].includes(p.condition)) score += 10;
 
-      // Recency boost, decaying over 20 days
-      //const ageDays = (now - new Date(p.createdAt).getTime()) / 86400000;
-      //score += Math.max(0, 20 - ageDays);
-
-      // Save the calculated score
       return { ...p, _score: score };
     })
-    // Sort descending (highest score first)
     .sort((a, b) => b._score - a._score);
 }
 

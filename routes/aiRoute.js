@@ -1,7 +1,9 @@
 const express = require("express");
 const rateLimit = require("express-rate-limit");
 const aiRouter = express.Router();
-const { aiSearch } = require("../controllers/aiSearchController");
+const { aiSearch,analyzeProductImage } = require("../controllers/aiSearchController");
+const { upload } = require('../Utils/mutlerConfig');
+
 
 // Guest-friendly (no auth required) but rate-limited — an LLM-backed
 // endpoint with no login wall is a real cost/abuse vector.
@@ -12,5 +14,6 @@ const aiSearchLimiter = rateLimit({
 });
 
 aiRouter.post("/ai/i/search", aiSearchLimiter, aiSearch);
+aiRouter.post("/ai/i/anayze_image",aiSearchLimiter,upload.single('productImage'),analyzeProductImage)
 
 module.exports = aiRouter;
