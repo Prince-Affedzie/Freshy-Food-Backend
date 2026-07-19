@@ -13,15 +13,15 @@ const createGuestOrder = async (req, res) => {
       productId, 
       productName, 
       price, 
-      buyerName, 
-      buyerPhone, 
+      customerName, 
+      phone, 
       campus, 
       location 
     } = req.body;
     console.log(req.body)
 
     // Validate required fields
-    if (!productId || !productName || !buyerName || !buyerPhone || !campus || !location) {
+    if (!productId || !productName || !customerName || !phone || !campus || !location) {
       return res.status(400).json({
         success: false,
         message: 'All fields are required: productId, productName, customerName, phone, campus, location'
@@ -30,7 +30,7 @@ const createGuestOrder = async (req, res) => {
 
     // Validate phone number (Ghana format)
     const phoneRegex = /^0[2-9]\d{8}$/;
-    if (!phoneRegex.test(buyerPhone)) {
+    if (!phoneRegex.test(phone)) {
       return res.status(400).json({
         success: false,
         message: 'Please enter a valid Ghana phone number (e.g., 0501234567)'
@@ -64,7 +64,7 @@ const createGuestOrder = async (req, res) => {
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const existingOrder = await GuestOrder.findOne({
       product: productId,
-      phone:buyerPhone,
+      phone:phone,
       createdAt: { $gte: twentyFourHoursAgo }
     });
 
@@ -81,8 +81,8 @@ const createGuestOrder = async (req, res) => {
       productName: product.name, // Use actual product name from DB for consistency
       price: product.price,
       //originalPrice: product.discountInfo?.isOnSale ? product.discountInfo.originalPrice : null,
-      customerName: buyerName,
-      phone:buyerPhone,
+      customerName: customerName,
+      phone:phone,
       campus,
       location,
       status: 'pending',
@@ -98,7 +98,7 @@ const createGuestOrder = async (req, res) => {
     await Product.findByIdAndUpdate(productId, { $inc: { views: 1 } });
 
     //await notificationService.notifyAdminsNewOrder(guestOrder);
-    const sms_message = `Hello ${guestOrder.customerName}, your CediMart order #${guestOrder._id.toString().slice(-6)} has been received! We're getting your order ready for delivery. Thank you for shopping!`;
+    const sms_message = `Hello ${customerName}, your CediMart order #${guestOrder._id.toString().slice(-6)} has been received! We're getting your order ready for delivery. Thank you for shopping!`;
     await sendSMS(guestOrder.phone,sms_message)
     const message = `New Order #${guestOrder._id.toString().slice(-5)} received: You have ${guestOrder.productName} to prepare for delivery.`;
     await sendSMS(populatedOrder.vendor.phone, message);

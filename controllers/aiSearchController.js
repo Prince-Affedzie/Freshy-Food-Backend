@@ -65,7 +65,7 @@ const aiSearch = async (req, res) => {
       }
 
       const rankingIntent = { ...args, query: args.searchTerm || query };
-      const rankedMatches = rankResults(products, rankingIntent).slice(0, 15);
+      const rankedMatches = rankResults(products, rankingIntent).slice(0, 20);
       
 
       const minimizedDbResult = rankedMatches.map((p) => ({

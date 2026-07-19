@@ -250,7 +250,7 @@ const vendor_login = async(req,res)=>{
        const token = jwt.sign({id:vendor.user._id,role:vendor.user.role,vendor_id:vendor._id},process.env.token,{expiresIn:"7d"})
        
         res.cookie("token",token,{httpOnly:true,sameSite:"None",secure:true})
-        res.status(200).json({message:"Login Successful",role:vendor.user.role,user:vendor.user,token:token})
+        res.status(200).json({success: true,message:"Login Successful",role:vendor.user.role,user:vendor.user,vendor: vendor,token:token})
 
     }catch(err){
         console.log(err)

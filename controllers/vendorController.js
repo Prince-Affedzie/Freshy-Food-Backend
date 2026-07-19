@@ -269,7 +269,7 @@ const getVendorProducts = async(req,res)=>{
   try{
    // const vendor = req.user.id
     const vendor = await Vendor.findOne({user:req.user.id})
-    const products = await Product.find({vendor:vendor._id})
+    const products = await Product.find({vendor:vendor._id}).sort({createdAt:-1})
     return res.status(200).json(products)
 
   } catch (error) {
