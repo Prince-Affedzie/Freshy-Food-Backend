@@ -1,4 +1,6 @@
 const { createClient } = require("@supabase/supabase-js");
+const sharp = require("sharp");
+
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -8,30 +10,39 @@ const supabase = createClient(
 // -------------------------------
 // UPLOAD SINGLE IMAGE (CORE)
 // -------------------------------
+
 const uploadProductImage = async (file) => {
-  const fileExt = file.originalname.split(".").pop();
+  const compressedBuffer = await sharp(file.buffer)
+    .resize({
+      width: 1200,
+      withoutEnlargement: true,
+    })
+    .webp({
+      quality: 75,
+    })
+    .toBuffer();
 
   const fileName = `products/${Date.now()}-${Math.random()
     .toString(36)
-    .substring(2, 10)}.${fileExt}`;
+    .substring(2, 10)}.webp`;
 
-  const { data, error } = await supabase.storage
+  const { error } = await supabase.storage
     .from("FreshyFoodFactory")
-    .upload(fileName, file.buffer, {
-      contentType: file.mimetype,
-      cacheControl: "3600",
+    .upload(fileName, compressedBuffer, {
+      contentType: "image/webp",
+      cacheControl: "31536000",
       upsert: false,
     });
 
   if (error) throw error;
 
-  const { data: publicUrlData } = supabase.storage
+  const { data } = supabase.storage
     .from("FreshyFoodFactory")
     .getPublicUrl(fileName);
 
   return {
-    url: publicUrlData.publicUrl,
-    path: fileName, // IMPORTANT for deletion later
+    url: data.publicUrl,
+    path: fileName,
   };
 };
 
