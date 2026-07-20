@@ -50,7 +50,7 @@ async function generateProductDetails(imageBuffer, mimeType) {
 
   try {
     const response = await ai.models.generateContent({
-      model: process.env.AI_AGENT_MODE,
+      model: "gemini-2.5-flash",
       contents: [
         {
           role: "user",
