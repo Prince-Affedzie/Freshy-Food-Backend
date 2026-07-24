@@ -31,7 +31,7 @@ const guestOrderRouter = require('./routes/guestOrderRoutes')
 
 const {messagingSocket} = require("./services/messagingService")
 
-const { scheduleCleanup } = require('./services/logCleanup');
+const { scheduleCleanup } = require('./services/logCleanUp');
 
 
 
@@ -65,7 +65,7 @@ admin.initializeApp({
 
 
 const server = http.createServer(app)
-scheduleCleanup();
+
 
 const io = new Server(server,{
     cors:{
