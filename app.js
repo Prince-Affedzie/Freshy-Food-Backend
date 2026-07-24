@@ -31,6 +31,10 @@ const guestOrderRouter = require('./routes/guestOrderRoutes')
 
 const {messagingSocket} = require("./services/messagingService")
 
+const { scheduleCleanup } = require('./services/logCleanup');
+
+
+
 const redis = require("./config/redis");
 
 async function testRedis() {
@@ -61,6 +65,7 @@ admin.initializeApp({
 
 
 const server = http.createServer(app)
+scheduleCleanup();
 
 const io = new Server(server,{
     cors:{
@@ -112,5 +117,6 @@ mongoose.connect(mongo_connection_url)
         
         console.log('Listening on port 5000')
          testRedis();
+         scheduleCleanup();
          }).catch((err)=>console.log(err))
 

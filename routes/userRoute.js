@@ -5,15 +5,16 @@ const {signUp,login,logout,updateUser,deleteAccount,
 const express = require('express')
 const userRoute = express.Router()
 const {auth} = require('../middleware/auth');
+const { activityLoggerMiddleware } = require('../middleware/activityLoggerMiddleware');
 
 
-userRoute.post('/register/account',signUp)
-userRoute.post('/apple/authenticate',appleSignUpOrLogin)
-userRoute.post('/login',login)
-userRoute.post('/vendor/login',vendor_login)
-userRoute.post('/google_sign_up',signUpByGoogle)
-userRoute.post('/google_login',google_login)
-userRoute.post('/logout',logout)
+userRoute.post('/register/account',activityLoggerMiddleware('user_registered'),signUp)
+userRoute.post('/apple/authenticate',activityLoggerMiddleware('user_logged_in'),appleSignUpOrLogin)
+userRoute.post('/login',activityLoggerMiddleware('user_logged_in'),login)
+userRoute.post('/vendor/login',activityLoggerMiddleware('vendor_logged_in'),vendor_login)
+userRoute.post('/google_sign_up',activityLoggerMiddleware('user_registered'), signUpByGoogle)
+userRoute.post('/google_login',activityLoggerMiddleware('user_logged_in'),google_login)
+userRoute.post('/logout',activityLoggerMiddleware('user_logged_out'),logout)
 userRoute.put('/update-account',auth,updateUser)
 userRoute.delete('/delete-account',auth,deleteAccount)
 
