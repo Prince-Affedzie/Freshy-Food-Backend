@@ -28,6 +28,7 @@ const vendorRouter = require('./routes/vendorRoutes')
 const chatRoute = require('./routes/chatRoutes')
 const aiRouter = require('./routes/aiRoute')
 const guestOrderRouter = require('./routes/guestOrderRoutes')
+const referralRouter = require('./routes/referralRoutes')
 
 const {messagingSocket} = require("./services/messagingService")
 
@@ -105,6 +106,7 @@ app.use('/api',adminRoutes)
 app.use('/api',authRouter)
 app.use('/api',vendorRouter)
 app.use('/api',chatRoute)
+app.use('/api',referralRouter)
 app.set('notificationService', notificationService);
 
 

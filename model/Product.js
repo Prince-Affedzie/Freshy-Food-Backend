@@ -197,7 +197,11 @@ const productSchema = new mongoose.Schema(
       default: 0,
     },
 
-   
+    commissionPct:{
+      type:Number,
+      default: 0,
+    },
+
     reviews: [
       {
         user: {

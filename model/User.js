@@ -52,6 +52,10 @@ appleId: { type: String},
   type:String
  },
 
+ referralCode:{
+  type: String
+ },
+
 }, {
   timestamps: true
 });
