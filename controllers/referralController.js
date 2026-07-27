@@ -6,7 +6,7 @@ const Product    = require("../model/Product");
 const User       = require("../model/User");
 const Order      = require("../model/Order");  
 
-const BASE_URL = process.env.APP_WEB_BASE_URL || "https://campusmart.app";
+const BASE_URL = process.env.APP_WEB_BASE_URL || "https://cedi-mart-web.vercel.app";
 const REFERRAL_WINDOW_DAYS = 30;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -90,7 +90,7 @@ const generateReferralLink = async (req, res) => {
       });
     }
 
-    const shareUrl = `${BASE_URL}/p/${productId}?ref=${referral.referralCode}`;
+    const shareUrl = `${BASE_URL}/product/${productId}?ref=${referral.referralCode}`;
 
     return res.json({
       success: true,

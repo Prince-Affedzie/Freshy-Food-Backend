@@ -58,8 +58,7 @@ Rules:
 3. Upon receiving database results, format your response STRICTLY as follows:
 
    --- START OF FORMAT ---
-   ✨ Ask CediAI
-
+   
    [A brief, friendly, and professional 2-3 sentence summary of the best matches found, explaining why a specific item is a great pick based on features, condition, or price.]
 
 

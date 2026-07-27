@@ -9,6 +9,8 @@ const {sendOrderConfirmationEmail} = require('../services/emailService')
 const {sendSMS} = require('../services/smsService');
 const {buildOrderSMS} = require('../Utils/smsOrderComfirmationTemp')
 const Vendor = require('../model/Vendor');
+const { attachReferralToOrder } = require("./referralController");
+
 
 // WhatsApp Business API configuration
 const WHATSAPP_API_URL = process.env.WHATSAPP_API_URL;
@@ -137,6 +139,7 @@ const handleOrderPostProcessing = async (order, userId, notificationService) => 
 
 const createOrder = asyncHandler(async (req, res) => {
   const { id } = req.user;
+  console.log("request being received")
   const { 
     paymentReference, 
     paymentStatus,
@@ -144,7 +147,8 @@ const createOrder = asyncHandler(async (req, res) => {
     shippingAddress, 
     paymentMethod, 
     deliverySchedule, // preferredDay and preferredTime are inside here
-    deliveryNote 
+    deliveryNote,
+    referralCode 
   } = req.body;
 
   try {
@@ -203,6 +207,8 @@ const createOrder = asyncHandler(async (req, res) => {
         console.error("Background processing failed:", err);
       }
     });
+
+    await attachReferralToOrder(masterOrder._id,referralCode, masterOrder.totalPrice);
 
   } catch (error) {
     console.error("Order Creation Error:", error);
