@@ -189,6 +189,8 @@ const createOrder = asyncHandler(async (req, res) => {
       isPaid: true
     });
 
+    await attachReferralToOrder(masterOrder._id,referralCode, masterOrder.totalPrice);
+
     // 4. Response Immediately
     res.status(200).json({
       success: true,
@@ -199,6 +201,8 @@ const createOrder = asyncHandler(async (req, res) => {
       }
     });
 
+     
+ 
     // 5. BACKGROUND TASKS
     setImmediate(async () => {
       try {
@@ -208,7 +212,7 @@ const createOrder = asyncHandler(async (req, res) => {
       }
     });
 
-    await attachReferralToOrder(masterOrder._id,referralCode, masterOrder.totalPrice);
+   
 
   } catch (error) {
     console.error("Order Creation Error:", error);

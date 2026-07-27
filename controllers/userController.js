@@ -171,7 +171,7 @@ const signUp = async(req,res)=>{
     
     const userExist = await User.findOne({phone: phone })
     if(userExist){
-        return res.status(400).json({mesaage: "phone number had Already been taken"})
+        return res.status(400).json({mesaage: "Phone number has already been taken"})
     }
     const hashedPassword = await bcrypt.hash(password,10)
 
