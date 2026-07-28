@@ -150,6 +150,7 @@ const createOrder = asyncHandler(async (req, res) => {
     deliveryNote,
     referralCode 
   } = req.body;
+  console.log(req.body)
 
   try {
     // 1. Validation Logic

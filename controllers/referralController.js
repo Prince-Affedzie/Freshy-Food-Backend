@@ -80,6 +80,9 @@ const generateReferralLink = async (req, res) => {
       const productFragment = productId.toString().slice(-4).toUpperCase();
       const uniqueCode = `${code}${productFragment}`;
 
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 30);
+
       referral = await Referral.create({
         referralCode: uniqueCode,
         sharerId,
@@ -87,6 +90,7 @@ const generateReferralLink = async (req, res) => {
         vendorId:     product.vendor._id,
         commissionPct: product.commissionPct || 3,
         status: "generated",
+        expiresAt, 
       });
     }
 
@@ -101,6 +105,7 @@ const generateReferralLink = async (req, res) => {
         productName: product.name,
         productPrice: product.price,
         estimatedEarning: ((product.price * referral.commissionPct) / 100).toFixed(2),
+        expiresAt: referral.expiresAt, 
       },
     });
   } catch (err) {
@@ -175,12 +180,13 @@ const trackReferralClick = async (req, res) => {
  *   await attachReferralToOrder(order._id, req.cookies?.cm_ref, order.totalPrice);
  */
 const attachReferralToOrder = async (orderId, referralCode, orderTotal) => {
+ console.log("I'm working")
+ console.log("referralCode", referralCode)
   if (!referralCode) return;
   try {
     const referral = await Referral.findOne({
       referralCode,
-      status: "clicked",
-      expiresAt: { $gt: new Date() },     // within the 30-day window
+      //expiresAt: { $gt: new Date() },     // within the 30-day window
       convertedOrderId: null,              // not already converted
     });
     if (!referral) return;  // expired, invalid, or already used
