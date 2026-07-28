@@ -5,6 +5,8 @@ const { RewardWallet, WalletTransaction } = require("../model/RewardWallet");
 const Product    = require("../model/Product");
 const User       = require("../model/User");
 const Order      = require("../model/Order");  
+const Vendor = require('../model/Vendor');
+
 
 const BASE_URL = process.env.APP_WEB_BASE_URL || "https://cedi-mart-web.vercel.app";
 const REFERRAL_WINDOW_DAYS = 30;
@@ -466,9 +468,11 @@ const convertToShoppingCredit = async (req, res) => {
  * Auth: vendor required
  */
 const getVendorReferralStats = async (req, res) => {
+    console.log("I'm working")
   try {
-    const userId = req.user
+    const userId = req.user.id || req.user._id;
     const vendor = await Vendor.findOne({user:userId})
+    
 
     const referrals = await Referral.find({ vendorId:vendor._id })
       .sort({ createdAt: -1 })
@@ -484,7 +488,7 @@ const getVendorReferralStats = async (req, res) => {
       .filter(r => r.status === "rewarded")
       .reduce((s, r) => s + (r.rewardAmount || 0), 0);
 
-    return res.json({
+    return res.status(200).json({
       success: true,
       data: {
         summary: {

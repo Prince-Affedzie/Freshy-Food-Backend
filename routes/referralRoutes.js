@@ -9,7 +9,10 @@ const {generateReferralLink,trackReferralClick,getMyReferralStats,
 const { auth } = require('../middleware/auth');
 
 
-
+referralRouter.use((req, res, next) => {
+  console.log(`📍 Referral Router hit: ${req.method} ${req.originalUrl}`);
+  next();
+});
 referralRouter.get("/referrals/track/:code", trackReferralClick);
 
 // ── Authenticated user routes ─────────────────────────────────────────────────
@@ -19,7 +22,7 @@ referralRouter.post("/wallet/withdraw",    auth, withdrawToMomo);
 referralRouter.post("/wallet/use-as-credit",auth, convertToShoppingCredit);
 
 // ── Authenticated vendor routes ───────────────────────────────────────────────
-referralRouter.get("/vendor/referral-stats", auth, getVendorReferralStats);
+referralRouter.get("/v/referral-stats", auth, getVendorReferralStats);
 referralRouter.patch("/products/:id/commission", auth, updateProductCommission);
 
 module.exports = referralRouter;
