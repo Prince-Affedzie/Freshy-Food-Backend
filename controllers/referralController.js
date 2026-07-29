@@ -181,7 +181,7 @@ const trackReferralClick = async (req, res) => {
  *   const { attachReferralToOrder } = require("./referralController");
  *   await attachReferralToOrder(order._id, req.cookies?.cm_ref, order.totalPrice);
  */
-const attachReferralToOrder = async (orderId, referralCode, orderTotal) => {
+const attachReferralToOrder = async (orderId, referralCode, orderTotal,notificationService) => {
  console.log("I'm working")
  console.log("referralCode", referralCode)
   if (!referralCode) return;
@@ -215,8 +215,16 @@ const attachReferralToOrder = async (orderId, referralCode, orderTotal) => {
       status:      "pending",
       description: `Reward pending — waiting for delivery confirmation`,
     });
+
+    if (notificationService) {
+      await notificationService.sendReferralOrderNotification(
+        referral.sharerId,
+        rewardAmount,
+        product?.name || 'a product'
+      );
+    }
   } catch (err) {
-    // Non-fatal: a referral tracking failure must never block an order
+    
     console.error("attachReferralToOrder error:", err);
   }
 };
@@ -229,7 +237,7 @@ const attachReferralToOrder = async (orderId, referralCode, orderTotal) => {
  *   const { confirmReferralReward } = require("./referralController");
  *   await confirmReferralReward(order._id);
  */
-const confirmReferralReward = async (orderId) => {
+const confirmReferralReward = async (orderId,notificationService) => {
   try {
     const referral = await Referral.findOne({
       convertedOrderId: orderId,
@@ -267,6 +275,12 @@ const confirmReferralReward = async (orderId) => {
     // Mark as fully rewarded
     referral.status = "rewarded";
     await referral.save();
+    if (notificationService) {
+      await notificationService.sendReferralRewardConfirmedNotification(
+        referral.sharerId,
+        referral.rewardAmount,
+      );
+    }
   } catch (err) {
     console.error("confirmReferralReward error:", err);
   }
@@ -276,7 +290,7 @@ const confirmReferralReward = async (orderId) => {
 /**
  * Called when an order is cancelled or refunded.
  */
-const cancelReferralReward = async (orderId) => {
+const cancelReferralReward = async (orderId,notificationService) => {
   try {
     const referral = await Referral.findOne({ convertedOrderId: orderId, status: "ordered" });
     if (!referral) return;
@@ -297,6 +311,14 @@ const cancelReferralReward = async (orderId) => {
       status:      "completed",
       description: "Reward removed — order was cancelled or refunded",
     });
+    
+
+    if (notificationService) {
+      await notificationService.sendReferralCancelledNotification(
+        referral.sharerId,
+        referral.rewardAmount,
+      );
+    }
   } catch (err) {
     console.error("cancelReferralReward error:", err);
   }

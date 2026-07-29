@@ -9,7 +9,7 @@ const {sendOrderConfirmationEmail} = require('../services/emailService')
 const {sendSMS} = require('../services/smsService');
 const {buildOrderSMS} = require('../Utils/smsOrderComfirmationTemp')
 const Vendor = require('../model/Vendor');
-const { attachReferralToOrder } = require("./referralController");
+const { attachReferralToOrder,confirmReferralReward,cancelReferralReward } = require("./referralController");
 
 
 // WhatsApp Business API configuration
@@ -190,7 +190,7 @@ const createOrder = asyncHandler(async (req, res) => {
       isPaid: true
     });
 
-    await attachReferralToOrder(masterOrder._id,referralCode, masterOrder.totalPrice);
+    await attachReferralToOrder(masterOrder._id,referralCode, masterOrder.totalPrice,req.app.get("notificationService"));
 
     // 4. Response Immediately
     res.status(200).json({
@@ -1014,9 +1014,10 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
     if (status === 'Delivered') {
       order.isDelivered = true;
       order.deliveredAt = Date.now();
-    } else if (status === 'Cancelled') {
-     
+      await confirmReferralReward(order._id,notificationService);
+    } else if (status === 'Cancelled') { 
       await restoreProductStock(order.orderItems);
+      await cancelReferralReward(order._id,notificationService)
     }
     
     const updatedOrder = await order.save();

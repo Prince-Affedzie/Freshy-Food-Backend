@@ -270,6 +270,46 @@ async adminBroadcastNotification({ title, message }) {
 }
 
 
+async sendReferralOrderNotification(userId, rewardAmount, productName) {
+  return this.sendNotification({
+    userId,
+    title: "💰 Referral Order!",
+    message: `Someone placed an order through your referral link! You'll earn GH₵ ${rewardAmount.toFixed(2)} once the delivery is confirmed.`,
+    data: {
+      type: 'referral_order',
+      rewardAmount,
+      productName,
+    }
+  });
+}
+
+
+// When delivery is confirmed and reward moves to available balance
+async sendReferralRewardConfirmedNotification(userId, rewardAmount) {
+  return this.sendNotification({
+    userId,
+    title: "Referral Reward Confirmed!",
+    message: `GH₵ ${rewardAmount.toFixed(2)} from your referral has been added to your available balance. You can withdraw it anytime!`,
+    data: {
+      type: 'referral_confirmed',
+      rewardAmount,
+    }
+  });
+}
+
+async sendReferralCancelledNotification(userId, rewardAmount) {
+  return this.sendNotification({
+    userId,
+    title: "❌ Referral Cancelled",
+    message: `A referral order was cancelled. The pending reward of GH₵ ${rewardAmount.toFixed(2)} has been removed.`,
+    data: {
+      type: 'referral_cancelled',
+      rewardAmount,
+    }
+  });
+}
+
+
 }
 
 module.exports = NotificationService;
