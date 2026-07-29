@@ -213,6 +213,7 @@ const login = async(req,res)=>{
         if(!findUser){
             return res.status(404).json({message: "Account doesn't Exist. Please sign up first"})
         }
+        
         const isPasswordMatch = await bcrypt.compare(password,findUser.password)
         if(!isPasswordMatch){
             return res.status(401).json({message:"Invalid Credentials"})

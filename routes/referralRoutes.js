@@ -3,7 +3,11 @@ const express = require("express");
 const referralRouter  = express.Router();
 const {generateReferralLink,trackReferralClick,getMyReferralStats,
      attachReferralToOrder, confirmReferralReward,cancelReferralReward,
-     withdrawToMomo,convertToShoppingCredit,getVendorReferralStats,updateProductCommission}   
+     withdrawToMomo,convertToShoppingCredit,getVendorReferralStats,updateProductCommission,
+    getAllReferrals, 
+    getReferralDetail, 
+    getReferralStats
+    }   
     = require("../controllers/referralController");
 
 const { auth } = require('../middleware/auth');
@@ -24,6 +28,11 @@ referralRouter.post("/wallet/use-as-credit",auth, convertToShoppingCredit);
 // ── Authenticated vendor routes ───────────────────────────────────────────────
 referralRouter.get("/v/referral-stats", auth, getVendorReferralStats);
 referralRouter.patch("/products/:id/commission", auth, updateProductCommission);
+
+// Admin ROutes
+referralRouter.get('/admin/referrals', auth,  getAllReferrals);
+referralRouter.get('/admin/referrals/stats', auth,  getReferralStats);
+referralRouter.get('/admin/referrals/:id', auth,  getReferralDetail);
 
 module.exports = referralRouter;
 

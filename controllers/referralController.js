@@ -569,6 +569,294 @@ const updateProductCommission = async (req, res) => {
 };
 
 
+// controllers/referralController.js
+
+// ─── Admin: Get all referrals (paginated, filterable) ──────────────────────
+const getAllReferrals = async (req, res) => {
+  try {
+    const { 
+      page = 1, 
+      limit = 20, 
+      status, 
+      sort = '-createdAt',
+      search,
+      startDate,
+      endDate
+    } = req.query;
+
+    const query = {};
+
+    // Filter by status
+    if (status) {
+      query.status = status;
+    }
+
+    // Filter by date range
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) query.createdAt.$gte = new Date(startDate);
+      if (endDate) query.createdAt.$lte = new Date(endDate);
+    }
+
+    // Search by referral code or product name
+    if (search) {
+      query.$or = [
+        { referralCode: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const [referrals, total] = await Promise.all([
+      Referral.find(query)
+        .sort(sort)
+        .skip(skip)
+        .limit(parseInt(limit))
+        .populate('sharerId', 'firstName lastName phone')
+        .populate('productId', 'name price images')
+        .populate('vendorId', 'storeName')
+        .populate('convertedOrderId', 'orderNumber totalPrice')
+        .lean(),
+      Referral.countDocuments(query)
+    ]);
+
+    // Calculate summary stats
+    const stats = await Referral.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: null,
+          totalReferrals: { $sum: 1 },
+          totalClicks: { $sum: '$clickCount' },
+          totalRewards: { $sum: '$rewardAmount' },
+          totalConverted: {
+            $sum: { $cond: [{ $eq: ['$status', 'confirmed'] }, 1, 0] }
+          }
+        }
+      }
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        referrals,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          totalPages: Math.ceil(total / parseInt(limit))
+        },
+        stats: stats[0] || {
+          totalReferrals: 0,
+          totalClicks: 0,
+          totalRewards: 0,
+          totalConverted: 0
+        }
+      }
+    });
+  } catch (err) {
+    console.error("getAllReferrals error:", err);
+    return res.status(500).json({ 
+      success: false, 
+      message: "Failed to fetch referrals" 
+    });
+  }
+};
+
+// ─── Admin: Get single referral detail ─────────────────────────────────────
+const getReferralDetail = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const referral = await Referral.findById(id)
+      .populate('sharerId', 'firstName lastName phone email')
+      .populate('productId', 'name price images category condition campus')
+      .populate('vendorId', 'storeName phone campusArea')
+      .populate('convertedOrderId', 'orderNumber totalPrice status paymentStatus createdAt')
+      .lean();
+
+    if (!referral) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Referral not found" 
+      });
+    }
+
+    // Get click history if you're tracking it
+    const clickHistory = referral.clickHistory || [];
+
+    // Get related wallet transactions
+    const walletTransactions = await WalletTransaction.find({
+      referralId: referral._id
+    }).sort('-createdAt').lean();
+
+    // Calculate lifetime earnings for this referrer
+    const sharerEarnings = await Referral.aggregate([
+      { 
+        $match: { 
+          sharerId: referral.sharerId._id,
+          status: 'confirmed'
+        } 
+      },
+      {
+        $group: {
+          _id: null,
+          totalEarnings: { $sum: '$rewardAmount' },
+          totalReferrals: { $sum: 1 }
+        }
+      }
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        referral,
+        clickHistory,
+        walletTransactions,
+        sharerStats: {
+          lifetimeEarnings: sharerEarnings[0]?.totalEarnings || 0,
+          totalReferrals: sharerEarnings[0]?.totalReferrals || 0
+        }
+      }
+    });
+  } catch (err) {
+    console.error("getReferralDetail error:", err);
+    return res.status(500).json({ 
+      success: false, 
+      message: "Failed to fetch referral details" 
+    });
+  }
+};
+
+// ─── Admin: Get referral stats/summary ─────────────────────────────────────
+const getReferralStats = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+
+    const dateFilter = {};
+    if (startDate || endDate) {
+      dateFilter.createdAt = {};
+      if (startDate) dateFilter.createdAt.$gte = new Date(startDate);
+      if (endDate) dateFilter.createdAt.$lte = new Date(endDate);
+    }
+
+    const stats = await Referral.aggregate([
+      { $match: dateFilter },
+      {
+        $group: {
+          _id: null,
+          totalGenerated: { $sum: 1 },
+          totalClicks: { $sum: '$clickCount' },
+          totalConverted: {
+            $sum: { $cond: [{ $in: ['$status', ['ordered', 'confirmed', 'rewarded']] }, 1, 0] }
+          },
+          totalConfirmed: {
+            $sum: { $cond: [{ $eq: ['$status', 'confirmed'] }, 1, 0] }
+          },
+          totalRewarded: {
+            $sum: { $cond: [{ $eq: ['$status', 'rewarded'] }, 1, 0] }
+          },
+          totalExpired: {
+            $sum: { $cond: [{ $eq: ['$status', 'expired'] }, 1, 0] }
+          },
+          totalRewardAmount: {
+            $sum: { $cond: [{ $eq: ['$status', 'rewarded'] }, '$rewardAmount', 0] }
+          },
+          totalPendingAmount: {
+            $sum: { $cond: [{ $in: ['$status', ['ordered', 'confirmed']] }, '$rewardAmount', 0] }
+          },
+          averageCommissionPct: { $avg: '$commissionPct' }
+        }
+      },
+      {
+        $addFields: {
+          conversionRate: {
+            $cond: [
+              { $gt: ['$totalClicks', 0] },
+              { $multiply: [{ $divide: ['$totalConverted', '$totalClicks'] }, 100] },
+              0
+            ]
+          }
+        }
+      }
+    ]);
+
+    // Status breakdown
+    const statusBreakdown = await Referral.aggregate([
+      { $match: dateFilter },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 },
+          totalRewards: { $sum: '$rewardAmount' }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    // Top referrers
+    const topReferrers = await Referral.aggregate([
+      { $match: { ...dateFilter, status: { $in: ['confirmed', 'rewarded'] } } },
+      {
+        $group: {
+          _id: '$sharerId',
+          totalReferrals: { $sum: 1 },
+          totalEarnings: { $sum: '$rewardAmount' }
+        }
+      },
+      { $sort: { totalEarnings: -1 } },
+      { $limit: 10 },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'user'
+        }
+      },
+      { $unwind: '$user' },
+      {
+        $project: {
+          _id: 1,
+          totalReferrals: 1,
+          totalEarnings: 1,
+          name: { $concat: ['$user.firstName', ' ', '$user.lastName'] },
+          phone: '$user.phone'
+        }
+      }
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        overview: stats[0] || {
+          totalGenerated: 0,
+          totalClicks: 0,
+          totalConverted: 0,
+          totalConfirmed: 0,
+          totalRewarded: 0,
+          totalExpired: 0,
+          totalRewardAmount: 0,
+          totalPendingAmount: 0,
+          averageCommissionPct: 0,
+          conversionRate: 0
+        },
+        statusBreakdown,
+        topReferrers
+      }
+    });
+  } catch (err) {
+    console.error("getReferralStats error:", err);
+    return res.status(500).json({ 
+      success: false, 
+      message: "Failed to fetch referral statistics" 
+    });
+  }
+};
+
+
 module.exports = {generateReferralLink,trackReferralClick,getMyReferralStats,
     attachReferralToOrder, confirmReferralReward,cancelReferralReward,
-    withdrawToMomo,convertToShoppingCredit,getVendorReferralStats,updateProductCommission}
+    withdrawToMomo,convertToShoppingCredit,getVendorReferralStats,updateProductCommission,
+    getAllReferrals,getReferralDetail,getReferralStats
+  }
