@@ -372,8 +372,21 @@ const getProductsByTag = asyncHandler(async (req, res) => {
     .sort({ createdAt: -1 })
     .limit(20)
     .select("-__v");
+    // Shuffle the array
+const shuffled = products.sort(() => Math.random() - 0.5);
 
-  res.status(200).json({ success: true, count: products.length, data: products });
+// If you want to keep some recency bias (mix of new + random):
+const shuffleWithRecencyBias = (arr, bias = 0.3) => {
+  // Sort by a weighted random score
+  return arr
+    .map((item, index) => ({ item, score: Math.random() * (1 - bias) + (index / arr.length) * bias }))
+    .sort((a, b) => b.score - a.score)
+    .map(({ item }) => item);
+};
+
+const shuffledProducts = shuffleWithRecencyBias(products);
+
+  res.status(200).json({ success: true, count: products.length, data: shuffledProducts });
 });
 
 // @desc    Create product
