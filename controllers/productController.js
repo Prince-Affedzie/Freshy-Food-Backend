@@ -131,7 +131,15 @@ const getAllProducts = asyncHandler(async (req, res) => {
     Product.countDocuments(query)
   ]);
 
- 
+ const shuffleWithRecencyBias = (arr, bias = 0.3) => {
+  // Sort by a weighted random score
+  return arr
+    .map((item, index) => ({ item, score: Math.random() * (1 - bias) + (index / arr.length) * bias }))
+    .sort((a, b) => b.score - a.score)
+    .map(({ item }) => item);
+};
+
+const shuffledProducts = shuffleWithRecencyBias(products);
 
   const totalPages = Math.ceil(total / limitNum);
 
@@ -146,7 +154,7 @@ const getAllProducts = asyncHandler(async (req, res) => {
       hasNextPage: pageNum < totalPages,
       hasPrevPage: pageNum > 1
     },
-    data: products
+    data:shuffledProducts
   };
 
   try {
