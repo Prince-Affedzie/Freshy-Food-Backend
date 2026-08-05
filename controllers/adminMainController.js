@@ -182,16 +182,16 @@ const getProductById = asyncHandler(async (req, res) => {
 const updateProduct = asyncHandler(async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
-    console.log(req.body)
+    console.log(req.body);
 
     if (!product) {
       return res.status(404).json({ success: false, message: 'Product not found' });
     }
 
-    // Regular fields (excluding 'location')
+    // Regular fields (excluding 'location' and 'tags')
     const updatableFields = [
       'name', 'category', 'subcategory', 'brand', 'price', 'negotiable', 'condition',
-      'description', 'campus', 'tags', 'countInStock', 'isAvailable'
+      'description', 'campus', 'countInStock', 'isAvailable'
     ];
 
     updatableFields.forEach(field => {
@@ -200,16 +200,18 @@ const updateProduct = asyncHandler(async (req, res) => {
       }
     });
 
+    //  Handle tags explicitly - mark as modified to ensure Mongoose saves the change
+    if (req.body.tags !== undefined) {
+      product.tags = Array.isArray(req.body.tags) ? req.body.tags : [];
+      product.markModified('tags'); //  This is crucial for array fields
+    }
+
     // Handle location separately
     if (req.body.location) {
-      // If location is a string or has specific structure, handle accordingly
       if (typeof req.body.location === 'object' && !Array.isArray(req.body.location)) {
-        // For nested location object (from FormData with brackets)
         if (!product.location) {
           product.location = {};
         }
-        
-        // Update only the fields that are provided
         if (req.body.location.campusArea !== undefined) {
           product.location.campusArea = req.body.location.campusArea;
         }
@@ -217,7 +219,6 @@ const updateProduct = asyncHandler(async (req, res) => {
           product.location.hostel = req.body.location.hostel;
         }
       } else {
-        // If location is a simple value
         product.location = req.body.location;
       }
     }
@@ -226,7 +227,6 @@ const updateProduct = asyncHandler(async (req, res) => {
     if (req.body.campus !== undefined) {
       product.campus = req.body.campus;
     }
-
 
     if (req.body.name && req.body.name !== product.name) {
       let newSlug = generateSlug(req.body.name);
@@ -241,10 +241,7 @@ const updateProduct = asyncHandler(async (req, res) => {
         if (product.images?.length) {
           await deleteMultipleProductImages(product.images);
         }
-
         const result = await uploadMultipleProductImages(req.files);
-        
-        // Add safety check for the result
         if (result && Array.isArray(result) && result.length > 0) {
           product.images = result.map(r => r && r.url).filter(Boolean);
         } else {
