@@ -95,6 +95,7 @@ io.on('connection',(socket)=>{
 
 })
 
+app.use('/api',webHookRouter)
 app.use("/api",aiRouter );
 app.use('/api',guestOrderRouter)
 app.use('/api',packagerouter)
@@ -108,7 +109,7 @@ app.use('/api',authRouter)
 app.use('/api',vendorRouter)
 app.use('/api',chatRoute)
 app.use('/api',referralRouter)
-app.use('/api',webHookRouter)
+
 app.set('notificationService', notificationService);
 
 
