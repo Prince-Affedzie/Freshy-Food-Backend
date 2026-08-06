@@ -29,6 +29,7 @@ const chatRoute = require('./routes/chatRoutes')
 const aiRouter = require('./routes/aiRoute')
 const guestOrderRouter = require('./routes/guestOrderRoutes')
 const referralRouter = require('./routes/referralRoutes')
+const webHookRouter = require('./routes/webHookRoutes')
 
 const {messagingSocket} = require("./services/messagingService")
 
@@ -107,6 +108,7 @@ app.use('/api',authRouter)
 app.use('/api',vendorRouter)
 app.use('/api',chatRoute)
 app.use('/api',referralRouter)
+app.use('/api',webHookRouter)
 app.set('notificationService', notificationService);
 
 
