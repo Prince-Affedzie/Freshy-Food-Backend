@@ -32,6 +32,7 @@ const sweepStuckVideos = async () => {
 
         try {
           const details = await getVideoDetails(item.bunnyVideoId);
+          console.log(details)
 
           if (isVideoFailed(details?.status)) {
             item.status = "failed";
