@@ -7,7 +7,7 @@ const {uploadFeedImage,
   deleteMultipleFeedFiles} = require('../config/supabaseS3')
   const User = require('../model/User')
 const mongoose = require('mongoose')
-const { getVideoDetails, buildPlaybackUrls, isVideoReady } = require('../services/bunnyStream');
+const { getVideoDetails, buildPlaybackUrls, isVideoReady, deleteVideo, } = require('../services/bunnyStream');
 
 
 // controllers/feedController.js — Updated createFeedPost
@@ -215,13 +215,39 @@ const deleteFeedPost = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized to delete this post' });
     }
 
-    // Delete associated media from Supabase
+    // Delete associated media
     if (post.media?.length > 0) {
-      const mediaUrls = post.media.map(m => m.url).filter(Boolean);
-      await deleteMultipleFeedFiles(mediaUrls);
+      for (const media of post.media) {
+        if (media.uploadSource === 'bunny' && media.bunnyVideoId) {
+          // Delete from Bunny Stream
+          try {
+            await deleteVideo(media.bunnyVideoId);
+            console.log(`🗑️ Deleted Bunny video: ${media.bunnyVideoId}`);
+          } catch (err) {
+            console.error(`Failed to delete Bunny video ${media.bunnyVideoId}:`, err.message);
+            // Continue — don't block post deletion if Bunny delete fails
+          }
+        } else if (media.url) {
+          // Delete from Supabase
+          try {
+            await deleteSingleFile(media.url);
+          } catch (err) {
+            console.error(`Failed to delete Supabase file:`, err.message);
+            // Continue — don't block post deletion if Supabase delete fails
+          }
+        }
+      }
+
+      // Also do batch Supabase cleanup as fallback
+      const supabaseUrls = post.media
+        .filter(m => m.uploadSource !== 'bunny' && m.url)
+        .map(m => m.url);
+      
+      if (supabaseUrls.length > 0) {
+        await deleteMultipleFeedFiles(supabaseUrls);
+      }
     }
 
-    // Delete comments' nested data if needed (optional cleanup)
     // Delete the post
     await FeedPost.findByIdAndDelete(req.params.id);
 
@@ -231,7 +257,6 @@ const deleteFeedPost = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to delete post' });
   }
 };
-
 // Also add these helper functions if not already present:
 
 // ─── Save/Unsave post ─────────────────────────────────────────────────────

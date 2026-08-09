@@ -21,7 +21,7 @@ const {
 } = require('../controllers/feedController');
 
 // ─── Public/Feed routes (auth required) ───────────────────────────────────
-feedRoutes.get('/feed', auth, getFeed);
+feedRoutes.get('/feed', getFeed);
 feedRoutes.get('/feed/trending', auth, getTrendingPosts);
 feedRoutes.get('/feed/saved', auth, getSavedPosts);
 feedRoutes.get('/feed/:id', auth, getPostDetail);
