@@ -76,7 +76,7 @@ const deleteVideo = async (videoId) => {
 // services/bunnyStream.js
 
 const buildPlaybackUrls = (videoId) => ({
-  hlsUrl: `https://player.mediadelivery.net/play/${BUNNY_LIBRARY_ID}/${videoId}`,
+  hlsUrl: `https://player.mediadelivery.net/play/${BUNNY_LIBRARY_ID}/${videoId}/playlist.m3u8`,
   thumbnailUrl: `https://${BUNNY_CDN_HOSTNAME}/${videoId}/thumbnail.jpg`,
 });
 
