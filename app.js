@@ -37,7 +37,7 @@ const uploadRouter = require('./routes/uploadRoutes')
 const {messagingSocket} = require("./services/messagingService")
 
 const { scheduleCleanup } = require('./services/logCleanUp');
-const {workerLoop}  = require('./workers/mediaProcessor')
+const { startBunnySweeper } = require('./workers/bunnySweeper');
 
 
 
@@ -128,6 +128,6 @@ mongoose.connect(mongo_connection_url)
         console.log('Listening on port 5000')
          testRedis();
          scheduleCleanup();
-        // workerLoop()
+         startBunnySweeper();
          }).catch((err)=>console.log(err))
 

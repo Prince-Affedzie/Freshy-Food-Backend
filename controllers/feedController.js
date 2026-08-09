@@ -7,6 +7,7 @@ const {uploadFeedImage,
   deleteMultipleFeedFiles} = require('../config/supabaseS3')
   const User = require('../model/User')
 const mongoose = require('mongoose')
+const { getVideoDetails, buildPlaybackUrls, isVideoReady } = require('../services/bunnyStream');
 
 
 // controllers/feedController.js — Updated createFeedPost
@@ -29,6 +30,41 @@ const createFeedPost = async (req, res) => {
       });
     }
 
+    // Check if any Bunny videos are already ready (rare but possible)
+    const processedMedia = await Promise.all(mediaItems.map(async (m) => {
+      if (m.bunnyVideoId) {
+        try {
+          const details = await getVideoDetails(m.bunnyVideoId);
+          if (isVideoReady(details)) {
+            const { hlsUrl, thumbnailUrl } = buildPlaybackUrls(m.bunnyVideoId);
+            return {
+              ...m,
+              url: hlsUrl,
+              thumbnailUrl,
+              status: 'ready',
+              uploadSource: 'bunny',
+            };
+          }
+        } catch (err) {
+          console.log(`Video ${m.bunnyVideoId} not ready yet`);
+        }
+        // Still processing
+        return {
+          ...m,
+          url: null,
+          thumbnailUrl: null,
+          status: 'processing',
+          uploadSource: 'bunny',
+        };
+      }
+      // Image — already has URL from Supabase
+      return {
+        ...m,
+        status: m.url ? 'ready' : 'processing',
+        uploadSource: 'supabase',
+      };
+    }));
+
     const post = await FeedPost.create({
       author: req.user.id || req.user._id,
       type,
@@ -38,15 +74,8 @@ const createFeedPost = async (req, res) => {
       campus: campus || 'ALL',
       linkedProduct: linkedProduct || null,
       status: 'approved',
-      media: mediaItems.map(m => ({
-        url: m.url || null,
-        type: m.type,
-        thumbnailUrl: m.thumbnailUrl || null,
-        status: m.type === 'video' ? 'processing' : (m.url ? 'ready' : 'processing'),
-        bunnyVideoId: m.bunnyVideoId || null,
-        uploadSource: m.bunnyVideoId ? 'bunny' : 'supabase',
-      })),
-      mediaStatus: 'processing',
+      media: processedMedia,
+      mediaStatus: processedMedia.every(m => m.status === 'ready') ? 'ready' : 'processing',
     });
 
     await post.populate('author', 'firstName lastName profileImage campus');
@@ -57,6 +86,9 @@ const createFeedPost = async (req, res) => {
     res.status(201).json({
       success: true,
       data: post,
+      message: processedMedia.some(m => m.status === 'processing')
+        ? 'Post created! Video is processing and will appear shortly.'
+        : 'Post created!',
     });
   } catch (err) {
     console.error('createFeedPost error:', err);
