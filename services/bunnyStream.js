@@ -73,8 +73,10 @@ const deleteVideo = async (videoId) => {
  * finished resolution. HLS works directly with expo-video's VideoView —
  * no format detection needed on the client side.
  */
+// services/bunnyStream.js
+
 const buildPlaybackUrls = (videoId) => ({
-  hlsUrl: `https://${BUNNY_CDN_HOSTNAME}/${videoId}/playlist.m3u8`,
+  hlsUrl: `https://player.mediadelivery.net/play/${BUNNY_LIBRARY_ID}/${videoId}`,
   thumbnailUrl: `https://${BUNNY_CDN_HOSTNAME}/${videoId}/thumbnail.jpg`,
 });
 
