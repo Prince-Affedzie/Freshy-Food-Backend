@@ -56,6 +56,43 @@ appleId: { type: String},
   type: String
  },
 
+ following: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    index: true,
+  }],
+  followers: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    index: true,
+  }],
+
+  followingCount: {
+    type: Number,
+    default: 0,
+  },
+  followersCount: {
+    type: Number,
+    default: 0,
+  },
+
+  savedPosts: [{
+    post: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'FeedPost',
+    },
+    savedAt: {
+      type: Date,
+      default: Date.now,
+    },
+  }],
+
+  savedPostsCount: {
+    type: Number,
+    default: 0,
+  },
+
+
 }, {
   timestamps: true
 });

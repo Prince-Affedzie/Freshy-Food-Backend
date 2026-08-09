@@ -6,6 +6,7 @@ const Package = require('./model/Package');
 const {Server} = require('socket.io')
 const http = require('http')
 const cors = require('cors')
+const User = require('./model/User');
 const admin = require('firebase-admin');
 require('dotenv').config()
 const NotificationService = require('./services/notificationService');
@@ -30,10 +31,13 @@ const aiRouter = require('./routes/aiRoute')
 const guestOrderRouter = require('./routes/guestOrderRoutes')
 const referralRouter = require('./routes/referralRoutes')
 const webHookRouter = require('./routes/webHookRoutes')
+const feedRoutes = require('./routes/feedRoutes')
+const uploadRouter = require('./routes/uploadRoutes')
 
 const {messagingSocket} = require("./services/messagingService")
 
 const { scheduleCleanup } = require('./services/logCleanUp');
+const {workerLoop}  = require('./workers/mediaProcessor')
 
 
 
@@ -45,9 +49,6 @@ async function testRedis() {
 
   console.log(value);
 }
-
-
-
 
 const app  = express()
 
@@ -95,7 +96,9 @@ io.on('connection',(socket)=>{
 
 })
 
-app.use('/api',webHookRouter)
+//app.use('/api',webHookRouter)
+app.use('/api',feedRoutes)
+app.use('/api',uploadRouter)
 app.use("/api",aiRouter );
 app.use('/api',guestOrderRouter)
 app.use('/api',packagerouter)
@@ -110,6 +113,7 @@ app.use('/api',vendorRouter)
 app.use('/api',chatRoute)
 app.use('/api',referralRouter)
 
+
 app.set('notificationService', notificationService);
 
 
@@ -120,8 +124,10 @@ mongoose.connect(mongo_connection_url)
          .then(()=>{
         server.listen(process.env.PORT || 5000)
         
+        
         console.log('Listening on port 5000')
          testRedis();
          scheduleCleanup();
+        // workerLoop()
          }).catch((err)=>console.log(err))
 

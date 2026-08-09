@@ -417,6 +417,121 @@ const getNotifications = async(req,res)=>{
     }
   }
 
+
+
+  // controllers/userController.js
+
+// ─── Follow a user ──────────────────────────────────────────────────────────
+const followUser = async (req, res) => {
+  try {
+    const targetUserId = req.params.id;
+    const currentUserId = req.user.id;
+
+    if (targetUserId === currentUserId.toString()) {
+      return res.status(400).json({ success: false, message: "You can't follow yourself" });
+    }
+
+    const targetUser = await User.findById(targetUserId);
+    if (!targetUser) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const currentUser = await User.findById(currentUserId);
+
+    // Check if already following
+    const isFollowing = currentUser.following.includes(targetUserId);
+
+    if (isFollowing) {
+      // Unfollow
+      currentUser.following.pull(targetUserId);
+      targetUser.followers.pull(currentUserId);
+      currentUser.followingCount = Math.max(0, currentUser.followingCount - 1);
+      targetUser.followersCount = Math.max(0, targetUser.followersCount - 1);
+    } else {
+      // Follow
+      currentUser.following.push(targetUserId);
+      targetUser.followers.push(currentUserId);
+      currentUser.followingCount += 1;
+      targetUser.followersCount += 1;
+    }
+
+    await currentUser.save();
+    await targetUser.save();
+
+    res.json({
+      success: true,
+      data: {
+        isFollowing: !isFollowing,
+        followingCount: currentUser.followingCount,
+        followersCount: targetUser.followersCount,
+      },
+    });
+  } catch (err) {
+    console.error('followUser error:', err);
+    res.status(500).json({ success: false, message: 'Failed to follow/unfollow' });
+  }
+};
+
+// ─── Get followers ─────────────────────────────────────────────────────────
+const getFollowers = async (req, res) => {
+  try {
+    const { page = 1, limit = 20 } = req.query;
+    const userId = req.params.id || req.user.id;
+
+    const user = await User.findById(userId)
+      .populate('followers', 'firstName lastName profileImage campus')
+      .slice('followers', [(page - 1) * limit, page * limit])
+      .lean();
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const total = await User.findById(userId).select('followersCount');
+
+    res.json({
+      success: true,
+      data: {
+        followers: user.followers,
+        total: total?.followersCount || 0,
+        hasMore: (page * limit) < (total?.followersCount || 0),
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Failed to fetch followers' });
+  }
+};
+
+// ─── Get following ─────────────────────────────────────────────────────────
+const getFollowing = async (req, res) => {
+  try {
+    const { page = 1, limit = 20 } = req.query;
+    const userId = req.params.id || req.user.id;
+
+    const user = await User.findById(userId)
+      .populate('following', 'firstName lastName profileImage campus')
+      .slice('following', [(page - 1) * limit, page * limit])
+      .lean();
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const total = await User.findById(userId).select('followingCount');
+
+    res.json({
+      success: true,
+      data: {
+        following: user.following,
+        total: total?.followingCount || 0,
+        hasMore: (page * limit) < (total?.followingCount || 0),
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Failed to fetch following' });
+  }
+};
+
   
 
 
@@ -424,7 +539,8 @@ const getNotifications = async(req,res)=>{
 
 
 module.exports = {signUp,login,vendor_login,logout,updateUser,deleteAccount,markNotificationAsRead,signUpByGoogle,google_login,appleSignUpOrLogin,
-    getNotifications,deleteBulkNotification,updatePushToken,deleteNotification,createNotification,}
+    getNotifications,deleteBulkNotification,updatePushToken,deleteNotification,
+    createNotification,followUser,getFollowers,getFollowing}
 
 
 

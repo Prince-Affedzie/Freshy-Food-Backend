@@ -1,6 +1,7 @@
 const {signUp,login,logout,updateUser,deleteAccount,
      markNotificationAsRead,signUpByGoogle,google_login,vendor_login,
-    getNotifications,deleteBulkNotification,updatePushToken,deleteNotification,createNotification,appleSignUpOrLogin,
+    getNotifications,deleteBulkNotification,updatePushToken,deleteNotification,createNotification,
+    appleSignUpOrLogin,followUser,getFollowers,getFollowing,
 } = require('../controllers/userController')
 const express = require('express')
 const userRoute = express.Router()
@@ -26,5 +27,9 @@ userRoute.delete('/delete/notification/:Id',auth,deleteNotification)
 userRoute.post('/delete/bulk_notification',auth,deleteBulkNotification)
 
 userRoute.post('/user/push-token', auth,updatePushToken )
+
+userRoute.post('/users/:id/follow', auth, followUser);
+userRoute.get('/users/:id/followers', auth, getFollowers);
+userRoute.get('/users/:id/following', auth, getFollowing);
 
 module.exports = userRoute

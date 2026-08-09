@@ -1,3 +1,4 @@
+// middleware/auth.js
 const jwt = require("jsonwebtoken");
 
 const auth = async (req, res, next) => {
@@ -33,4 +34,23 @@ const auth = async (req, res, next) => {
   }
 };
 
-module.exports = { auth };
+// ─── Admin Auth Middleware ────────────────────────────────────────────────────
+const adminAuth = async (req, res, next) => {
+  try {
+    // auth middleware must run before this to set req.user
+    if (!req.user) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
+
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+
+    next();
+  } catch (err) {
+    console.error("Admin auth error:", err.message);
+    res.status(500).json({ message: "Authorization check failed" });
+  }
+};
+
+module.exports = { auth, adminAuth };
