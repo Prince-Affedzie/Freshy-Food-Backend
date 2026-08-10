@@ -91,6 +91,11 @@ appleId: { type: String},
     type: Number,
     default: 0,
   },
+  strikeCount:     { type: Number, default: 0 },
+  isSuspended:     { type: Boolean, default: false },
+  suspendedUntil:  { type: Date, default: null },
+  isBanned:        { type: Boolean, default: false },
+  banReason:       { type: String, default: null },
 
 
 }, {

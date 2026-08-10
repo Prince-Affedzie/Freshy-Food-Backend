@@ -27,6 +27,7 @@ const auth = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.token);
     
     req.user = decoded;
+    
     next();
   } catch (err) {
     console.error("JWT verification failed:", err.message);

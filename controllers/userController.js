@@ -26,6 +26,17 @@ const appleSignUpOrLogin = async (req, res) => {
     let user = await User.findOne({ appleId: appleUserId });
 
     if (user) {
+
+       if (user.isBanned) {
+       return res.status(403).json({ success: false, message: 'This account has been banned.' });
+       }
+
+       if (user.isSuspended && user.suspendedUntil > new Date()) {
+        return res.status(403).json({
+          success: false,
+          message: `This account is suspended until ${user.suspendedUntil.toLocaleDateString()}.`,
+        });
+      }
        const apptoken = jwt.sign({id:user._id,role:user.role},process.env.token,{expiresIn:"7d"});
        res.cookie("token",apptoken,{httpOnly:true,sameSite:"None",secure:true})
        return res.status(200).json({message:"Login Successful",role:user.role,user:user,token:apptoken});
@@ -144,6 +155,17 @@ const google_login = async(req,res)=>{
     if(!findUser){
       return res.status(404).json({message: "Account Not Found. Please sign up first"})
     }
+
+    if (findUser.isBanned) {
+       return res.status(403).json({ success: false, message: 'This account has been banned.' });
+       }
+
+    if (findUser.isSuspended && findUser.suspendedUntil > new Date()) {
+        return res.status(403).json({
+          success: false,
+          message: `This account is suspended until ${user.suspendedUntil.toLocaleDateString()}.`,
+        });
+      }
        
         const apptoken = jwt.sign({id:findUser._id,role:findUser.role},process.env.token,{expiresIn:"7d"})
         res.cookie("token",apptoken,{httpOnly:true,sameSite:"None",secure:true})
@@ -213,8 +235,19 @@ const login = async(req,res)=>{
         if(!findUser){
             return res.status(404).json({message: "Account doesn't Exist. Please sign up first"})
         }
+
+       if (findUser.isBanned) {
+       return res.status(403).json({ success: false, message: 'This account has been banned.' });
+       }
+
+       if (findUser.isSuspended && findUser.suspendedUntil > new Date()) {
+        return res.status(403).json({
+          success: false,
+          message: `This account is suspended until ${user.suspendedUntil.toLocaleDateString()}.`,
+        });
+      }
         
-        const isPasswordMatch = await bcrypt.compare(password,findUser.password)
+       const isPasswordMatch = await bcrypt.compare(password,findUser.password)
         if(!isPasswordMatch){
             return res.status(401).json({message:"Invalid Credentials"})
         }

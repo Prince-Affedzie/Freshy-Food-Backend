@@ -60,6 +60,14 @@ const messageSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    isFlagged:{
+      type:Boolean,
+      default:false
+    },
+    isDeleted:{
+      type:Boolean,
+      default:false
+    }
   },
   {
     timestamps: true, // createdAt is the canonical send time
