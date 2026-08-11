@@ -302,7 +302,7 @@ const getVendors = async (req, res) => {
 
 const getVendor = async (req, res) => {
   try {
-    const vendor = await Vendor.findById(req.params.id).populate('products').populate('user','followersCount');
+    const vendor = await Vendor.findById(req.params.id).populate('products').populate('user','_id followersCount');
     
     if (!vendor) {
       return res.status(404).json({ success: false, error: 'Vendor not found' });
