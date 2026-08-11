@@ -197,20 +197,105 @@ const createVendor = async (req, res) => {
 
 const getVendors = async (req, res) => {
   try {
-    let query = {};
-    
-    
-    if (req.query.market) {
-      query.market_name = req.query.market;
+    const { 
+      search, 
+      campus, 
+      isVerified, 
+      isActive,
+      category,
+      sortBy = 'createdAt',
+      order = 'desc',
+      page = 1, 
+      limit = 20 
+    } = req.query;
+
+    // Build query
+    const query = {};
+
+    // Search by name or store name (case-insensitive)
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { storeName: { $regex: search, $options: 'i' } },
+        { phone: { $regex: search, $options: 'i' } },
+        { campusArea: { $regex: search, $options: 'i' } },
+      ];
     }
 
-    const vendors = await Vendor.find(query).populate('products');
-    res.status(200).json({ 
-      success: true, 
-      count: vendors.length, 
-      data: vendors 
+    // Filter by campus
+    if (campus) {
+      query.campus = campus;
+    }
+
+    // Filter by verification status
+    if (isVerified !== undefined) {
+      query.isVerified = isVerified === 'true' || isVerified === true;
+    }
+
+    // Filter by active status
+    if (isActive !== undefined) {
+      query.isActive = isActive === 'true' || isActive === true;
+    }
+
+    // Filter by category (vendors that sell in this category)
+    if (category) {
+      query.categories = category;
+    }
+
+    // Pagination
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const limitNum = parseInt(limit);
+
+    // Sorting
+    const sortOptions = {};
+    const allowedSortFields = ['createdAt', 'name', 'storeName', 'rating', 'totalSales'];
+    if (allowedSortFields.includes(sortBy)) {
+      sortOptions[sortBy] = order === 'asc' ? 1 : -1;
+    } else {
+      sortOptions.createdAt = -1;
+    }
+
+    // Execute query with pagination
+    const [vendors, total] = await Promise.all([
+      Vendor.find(query)
+        .sort(sortOptions)
+        .skip(skip)
+        .limit(limitNum)
+        .populate('products', 'name price images condition isAvailable countInStock')
+        .populate('user', 'firstName lastName phone profileImage')
+        .select('-__v')
+        .lean(),
+      Vendor.countDocuments(query),
+    ]);
+
+    // Calculate summary stats
+    const stats = await Vendor.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: null,
+          totalVendors: { $sum: 1 },
+          verifiedVendors: { $sum: { $cond: ['$isVerified', 1, 0] } },
+          averageRating: { $avg: '$rating' },
+        },
+      },
+    ]);
+
+    res.status(200).json({
+      success: true,
+      count: vendors.length,
+      total,
+      stats: stats[0] || { totalVendors: 0, verifiedVendors: 0, averageRating: 0 },
+      pagination: {
+        page: parseInt(page),
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
+        hasMore: skip + vendors.length < total,
+      },
+      data: vendors,
     });
   } catch (error) {
+    console.error('getVendors error:', error);
     res.status(400).json({ success: false, error: error.message });
   }
 };
@@ -224,41 +309,6 @@ const getVendor = async (req, res) => {
     }
 
     res.status(200).json({ success: true, data: vendor });
-  } catch (error) {
-    res.status(400).json({ success: false, error: error.message });
-  }
-};
-
-
-
-
-
-const getVendorsByMarket = async (req, res) => {
-  try {
-    const groupedVendors = await Vendor.aggregate([
-      {
-        $group: {
-          _id: "$market_name", // Group by the market name
-          vendors: { 
-            $push: { 
-              _id: "$_id",
-              name: "$name",
-              profile_image: "$profile_image",
-              location: "$location",
-              products:"$products",
-              categories:"$categories",
-            } 
-          },
-          count: { $sum: 1 }
-        }
-      },
-      { $sort: { _id: 1 } } // Sort markets alphabetically
-    ]);
-
-    res.status(200).json({
-      success: true,
-      data: groupedVendors
-    });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
   }
@@ -458,4 +508,4 @@ const getVendorOrders = async (req, res) => {
 };
 
 module.exports = {createVendor,getVendors,getVendor,getVendorOrders,
-  getVendorsByMarket,getVendorProducts,getMyVendorProfile,updateMyVendorProfile}
+  getVendorProducts,getMyVendorProfile,updateMyVendorProfile}

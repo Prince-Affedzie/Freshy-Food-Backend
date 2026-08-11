@@ -4,7 +4,6 @@ const {
   createVendor,
   getVendors,
   getVendor,
-  getVendorsByMarket,
   getVendorProducts,
   getMyVendorProfile,
   updateMyVendorProfile,
@@ -21,7 +20,6 @@ vendorRouter.post('/vendor',upload.fields([
 ]),createVendor)
 
 vendorRouter.get('/vendor',getVendors)
-vendorRouter.get('/vendors/by_market',getVendorsByMarket)
 vendorRouter.get('/vendor/my_products',auth, getVendorProducts)
   
 
