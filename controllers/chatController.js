@@ -3,6 +3,7 @@ const Conversation = require('../model/Conversation');
 const Message = require('../model/Message');
 const Product = require('../model/Product');
 const Vendor = require('../model/Vendor');
+const User = require('../model/User');
 const mongoose = require('mongoose');
 
 
@@ -25,41 +26,68 @@ const requireParticipant = (conversation, userId) => {
 // ── Open or retrieve a conversation ──────────────────────────────────────────
 //
 // POST /api/chat/conversations
-// Body: { productId }
+// Body: EITHER { productId }                — existing product-flow chat
+//       OR      { recipientId }              — general chat, no product context
+//                                               (e.g. messaging a Campus Feed author)
 //
-// A buyer taps "Chat with Seller" on a product page. This either opens the
-// existing thread or creates a new one, then returns it — so the client
-// always gets a conversation to navigate into without extra logic.
+// A buyer taps "Chat with Seller" on a product page (productId path), or a
+// user taps "Message" on someone's profile/post (recipientId path). Either
+// way this opens the existing thread or creates a new one, then returns it.
 
 const openConversation = async (req, res) => {
   try {
     const buyerId = req.user.id;
-    const { productId } = req.body;
-    console.log(req.body)
+    const { productId, recipientId } = req.body;
 
-    if (!productId) {
-      return res.status(400).json({ success: false, error: 'productId is required' });
+    if (!productId && !recipientId) {
+      return res.status(400).json({ success: false, error: 'productId or recipientId is required' });
     }
 
-    const product = await Product.findById(productId).select('vendor name images price');
-    if (!product) {
-      return res.status(404).json({ success: false, error: 'Product not found' });
-    }
+    let sellerUserId;
+    let resolvedProductId = null;
 
-    const vendorId = product.vendor;
-    const vendor = await Vendor.findById(vendorId)
+    if (productId) {
+      // ── Existing product-flow path (unchanged behavior) ──────────────
+      const product = await Product.findById(productId).select('vendor name images price');
+      if (!product) {
+        return res.status(404).json({ success: false, error: 'Product not found' });
+      }
 
-    if (buyerId.toString() === vendor.user.toString()) {
-      return res.status(400).json({ success: false, error: "You can't chat about your own product" });
+      const vendor = await Vendor.findById(product.vendor);
+      if (!vendor) {
+        return res.status(404).json({ success: false, error: 'Vendor not found for this product' });
+      }
+
+      sellerUserId = vendor.user;
+      resolvedProductId = productId;
+
+      if (buyerId.toString() === sellerUserId.toString()) {
+        return res.status(400).json({ success: false, error: "You can't chat about your own product" });
+      }
+    } else {
+      // ── New: general conversation, not tied to a product ─────────────
+      sellerUserId = recipientId;
+
+      if (buyerId.toString() === sellerUserId.toString()) {
+        return res.status(400).json({ success: false, error: "You can't start a conversation with yourself" });
+      }
+
+      const recipientExists = await User.exists({ _id: sellerUserId });
+      if (!recipientExists) {
+        return res.status(404).json({ success: false, error: 'User not found' });
+      }
     }
 
     const { conversation, created } = await Conversation.findOrCreate({
-      productId: productId,
-      buyerId: buyerId,
-      sellerId: vendor.user,
+      productId: resolvedProductId,
+      buyerId,
+      sellerId: sellerUserId,
     });
 
-    // Populate enough for the client to render the chat header immediately
+    // Populate enough for the client to render the chat header immediately.
+    // .product will simply be null for general conversations — the client
+    // should already handle a missing product (see ProductBanner in
+    // ChatScreen, which already early-returns when product is falsy).
     const populated = await Conversation.findById(conversation._id)
       .populate('product', 'name images price negotiable')
       .populate('buyer', 'firstName avatar')
@@ -198,7 +226,7 @@ const getMessages = async (req, res) => {
 // ── Send a message via REST (fallback if socket isn't connected) ──────────────
 //
 // POST /api/chat/conversations/:id/messages
-// Body: { text }
+// Body: { text, replyTo? }
 //
 // The primary send path is Socket.io. This REST endpoint is the fallback
 // for poor network conditions where the socket connection dropped but
@@ -206,8 +234,8 @@ const getMessages = async (req, res) => {
 
 const sendMessage = async (req, res) => {
   try {
-    const { text } = req.body;
-     const notificationService = req.app.get("notificationService");
+    const { text, replyTo } = req.body;
+    const notificationService = req.app.get("notificationService");
 
     if (!text || text.trim().length === 0) {
       return res.status(400).json({ success: false, error: 'Message text is required' });
@@ -234,6 +262,7 @@ const sendMessage = async (req, res) => {
       senderId: req.user.id,
       text: text.trim(),
       type: 'text',
+      replyTo: replyTo || null,
     });
 
     const populated = await message.populate('sender', 'firstName avatar');

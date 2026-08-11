@@ -54,19 +54,36 @@ const messageSchema = new mongoose.Schema(
       action: String,
     },
 
+    // ── Reply-to (WhatsApp-style quoting) ─────────────────────────────────
+    // Reference to the message this one is replying to. Kept alongside a
+    // denormalized snapshot (replyPreview) rather than relying solely on
+    // populate() — the quoted preview needs to keep rendering correctly
+    // even if the original message is later deleted/flagged, exactly like
+    // WhatsApp still shows "This message was deleted" style quotes.
+    replyTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Message',
+      default: null,
+    },
+    replyPreview: {
+      text: { type: String, default: null }, // truncated snapshot, or a label like "💰 Offer · GH₵200" for non-text
+      senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+      type: { type: String, default: null }, // the ORIGINAL message's type — lets the client render a distinct quote style (photo/offer/system) the way WhatsApp does
+    },
+
     // Null until the recipient opens the conversation.
     // Set by the server when the other party fetches or views messages.
     readAt: {
       type: Date,
       default: null,
     },
-    isFlagged:{
-      type:Boolean,
-      default:false
+    isFlagged: {
+      type: Boolean,
+      default: false
     },
-    isDeleted:{
-      type:Boolean,
-      default:false
+    isDeleted: {
+      type: Boolean,
+      default: false
     }
   },
   {
@@ -102,6 +119,38 @@ messageSchema.pre('validate', function (next) {
   next();
 });
 
+// ── Reply preview builder ───────────────────────────────────────────────────
+
+const REPLY_PREVIEW_MAX_LEN = 120;
+
+// Builds the denormalized snapshot stored on the replying message. Kept as
+// a plain function (not a schema method) since it operates on the ORIGINAL
+// message being quoted, not the message being created.
+const buildReplyPreview = (original) => {
+  if (original.type === 'offer_link') {
+    return {
+      text: `💰 Offer · GH₵${original.offerMeta?.offerPrice ?? '—'}`,
+      senderId: original.sender,
+      type: original.type,
+    };
+  }
+
+  if (original.type === 'system') {
+    return {
+      text: original.text || 'System message',
+      senderId: null,
+      type: original.type,
+    };
+  }
+
+  const raw = original.text || '';
+  return {
+    text: raw.length > REPLY_PREVIEW_MAX_LEN ? `${raw.slice(0, REPLY_PREVIEW_MAX_LEN)}…` : raw,
+    senderId: original.sender,
+    type: original.type,
+  };
+};
+
 // ── Statics ───────────────────────────────────────────────────────────────────
 
 // Create a message and update the parent conversation's lastMessage pointer
@@ -113,6 +162,7 @@ messageSchema.statics.createAndUpdateConversation = async function ({
   text,
   type = 'text',
   offerMeta = null,
+  replyTo = null,
 }) {
   const Conversation = mongoose.model('Conversation');
 
@@ -132,6 +182,24 @@ messageSchema.statics.createAndUpdateConversation = async function ({
 
   const unreadField = isBuyer ? 'sellerUnread' : 'buyerUnread';
 
+  // Resolve the reply snapshot, if replying. Validated against the SAME
+  // conversation so a client can't quote a message from a thread it isn't
+  // even part of.
+  let replyPreview = null;
+  let resolvedReplyTo = null;
+
+  if (replyTo) {
+    const original = await this.findById(replyTo);
+    if (!original) {
+      throw new Error('The message you are replying to no longer exists');
+    }
+    if (original.conversation.toString() !== conversationId.toString()) {
+      throw new Error('Cannot reply to a message from a different conversation');
+    }
+    resolvedReplyTo = original._id;
+    replyPreview = buildReplyPreview(original);
+  }
+
   // Create the message
   const message = await this.create({
     conversation: conversationId,
@@ -139,6 +207,8 @@ messageSchema.statics.createAndUpdateConversation = async function ({
     text,
     type,
     offerMeta,
+    replyTo: resolvedReplyTo,
+    replyPreview,
   });
 
   // Update the conversation atomically:

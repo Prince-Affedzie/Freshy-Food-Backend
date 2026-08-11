@@ -23,10 +23,12 @@ function messagingSocket(io, socket,notificationService) {
   });
 
   // ── Send a message ──────────────────────────────────────────────────────────
-  socket.on('sendMessage', async ({ conversationId, senderId, text }) => {
+  // Now accepts an optional replyTo — the ID of the message being quoted,
+  // same as the WhatsApp "swipe to reply" gesture would produce.
+  socket.on('sendMessage', async ({ conversationId, senderId, text, replyTo }) => {
     try {
       // createAndUpdateConversation handles:
-      //   - message creation
+      //   - message creation (including reply snapshot resolution, if replyTo is set)
       //   - lastMessage pointer update on Conversation
       //   - recipient's unread counter increment
       const message = await Message.createAndUpdateConversation({
@@ -34,6 +36,7 @@ function messagingSocket(io, socket,notificationService) {
         senderId,
         text,
         type: 'text',
+        replyTo: replyTo || null,
       });
 
       // Populate sender info so the client can render the avatar immediately
