@@ -111,7 +111,7 @@ const getFeed = async (req, res) => {
       .sort(sortOption)
       .skip((page - 1) * limit)
       .limit(parseInt(limit))
-      .populate('author', 'firstName lastName profileImage campus')
+      .populate('author', 'role firstName lastName profileImage campus')
       .populate('linkedProduct', 'name price images')
       .lean();
 
