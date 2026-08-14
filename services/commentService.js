@@ -51,11 +51,13 @@ const createComment = async ({ postId, authorId, text, parentCommentId = null, m
 
 // ─── Get comments for a post (with replies) ────────────────────────────────
 const getComments = async ({ postId, page = 1, limit = 20, sort = 'newest' }) => {
+    console.log("PostId",postId)
   const sortOption = sort === 'oldest' 
     ? { createdAt: 1 } 
     : sort === 'top' 
       ? { likeCount: -1, createdAt: -1 } 
       : { createdAt: -1 };
+
 
   const comments = await Comment.find({
     post: postId,
@@ -63,6 +65,7 @@ const getComments = async ({ postId, page = 1, limit = 20, sort = 'newest' }) =>
     status: 'visible',
     isDeleted: false,
   })
+  console.log("Comment",comments)
     .sort(sortOption)
     .skip((page - 1) * limit)
     .limit(parseInt(limit))
