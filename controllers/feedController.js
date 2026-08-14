@@ -196,7 +196,7 @@ const getComments = async (req, res) => {
     console.log(req.params)
     const { page = 1, limit = 20, sort = 'newest' } = req.query;
     
-    const result = await commentService.getComments({ id, page, limit, sort });
+    const result = await commentService.getComments({ postId:id, page, limit, sort });
     console.log(result)
     res.json({ success: true, data: result });
   } catch (err) {
