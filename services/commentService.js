@@ -51,7 +51,7 @@ const createComment = async ({ postId, authorId, text, parentCommentId = null, m
 
 // ─── Get comments for a post (with replies) ────────────────────────────────
 const getComments = async ({ postId, page = 1, limit = 20, sort = 'newest' }) => {
-console.log("postId",postId)
+
   const sortOption = sort === 'oldest' 
     ? { createdAt: 1 } 
     : sort === 'top' 
