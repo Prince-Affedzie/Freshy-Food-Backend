@@ -65,8 +65,6 @@ console.log("postId",postId)
     status: 'visible',
     isDeleted: false,
   })
-  console.log("Comment",comments)
-
     .sort(sortOption)
     .skip((page - 1) * limit)
     .limit(parseInt(limit))
