@@ -13,6 +13,7 @@ const NotificationService = require('./services/notificationService');
 const {authenticateSocketConnection} = require('./Validators/authenticateSocketConnection')
 const Product = require('./model/Product');
 const Vendor = require('./model/Vendor');
+const FeedPost = require('./model/FeedPost');
 const serviceAccount = process.env.FIREBASE_CONFIG 
   ? JSON.parse(process.env.FIREBASE_CONFIG) 
   : require('./config/serviceAccountKey.json');
@@ -50,6 +51,7 @@ async function testRedis() {
 
   console.log(value);
 }
+
 
 const app  = express()
 

@@ -7,7 +7,7 @@ const feedPostSchema = new mongoose.Schema({
     required: true
   },
   vendorId: {
-    type: Schema.Types.ObjectId,
+    type: mongoose.Schema.Types.ObjectId,
     ref: 'Vendor',
     default: null,
   },
@@ -87,5 +87,6 @@ feedPostSchema.index({ campus: 1, createdAt: -1 });
 feedPostSchema.index({ type: 1, campus: 1 });
 feedPostSchema.index({ isTrending: -1, createdAt: -1 });
 feedPostSchema.index({ tags: 1 });
+feedPostSchema.index({ vendorId: 1 });
 
 module.exports = mongoose.model("FeedPost",feedPostSchema)
