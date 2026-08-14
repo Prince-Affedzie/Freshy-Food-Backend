@@ -1,5 +1,6 @@
 const FeedPost = require('../model/FeedPost')
 const ProcessingJob = require('../model/ProcessingJob');
+const Vendor = require('../model/Vendor'); // Adjust path as needed
 const {uploadFeedImage,
   uploadFeedVideo,
   uploadMultipleFeedMedia,
@@ -53,8 +54,15 @@ const createFeedPost = async (req, res) => {
       };
     });
 
+    let vendorId = null;
+    if (req.user.role === 'vendor') {
+      const vendor = await Vendor.findOne({ user: req.user.id || req.user._id }).select('_id').lean();
+      vendorId = vendor?._id || null;
+    }
+
     const post = await FeedPost.create({
       author: req.user.id || req.user._id,
+      vendorId,
       type,
       title,
       description,
@@ -66,7 +74,7 @@ const createFeedPost = async (req, res) => {
       mediaStatus: 'ready',
     });
 
-    await post.populate('author', 'firstName lastName profileImage campus');
+    await post.populate('author', 'firstName lastName profileImage campus role');
     if (post.linkedProduct) {
       await post.populate('linkedProduct', 'name price images campus');
     }
@@ -107,50 +115,20 @@ const getFeed = async (req, res) => {
     //if (sort === 'trending') sortOption = { views: -1, likes: -1, createdAt: -1 };
     //if (sort === 'popular') sortOption = { likes: -1, createdAt: -1 };
 
-    // Populate author with additional fields for vendor lookup
     const posts = await FeedPost.find(query)
       .sort(sortOption)
       .skip((page - 1) * limit)
       .limit(parseInt(limit))
-      .populate('author', 'role firstName lastName profileImage campus vendorProfile')
+      .populate('author', 'role firstName lastName profileImage campus')
       .populate('linkedProduct', 'name price images')
       .lean();
-
-    // After fetching posts, fetch vendor IDs for authors who are vendors
-    const vendorUserIds = posts
-      .filter(post => post.author && post.author.role === 'vendor')
-      .map(post => post.author._id);
-
-    // Fetch vendor profiles for these users
-    let vendorMap = {};
-    if (vendorUserIds.length > 0) {
-      const Vendor = require('../model/Vendor'); // Adjust path as needed
-      const vendors = await Vendor.find({ user: { $in: vendorUserIds } })
-        .select('_id user')
-        .lean();
-      
-      vendorMap = vendors.reduce((acc, vendor) => {
-        acc[vendor.user.toString()] = vendor._id;
-        return acc;
-      }, {});
-    }
-
-    // Add vendorId to author object if author is a vendor
-    const enrichedPosts = posts.map(post => {
-      const postObj = { ...post };
-      if (postObj.author && postObj.author.role === 'vendor') {
-        const userId = postObj.author._id.toString();
-        postObj.author.vendorId = vendorMap[userId] || null;
-      }
-      return postObj;
-    });
 
     const total = await FeedPost.countDocuments(query);
 
     res.json({
       success: true,
       data: {
-        posts: enrichedPosts,
+        posts,
         pagination: { page: parseInt(page), limit: parseInt(limit), total, totalPages: Math.ceil(total / limit) }
       }
     });

@@ -6,6 +6,11 @@ const feedPostSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
+  vendorId: {
+    type: Schema.Types.ObjectId,
+    ref: 'Vendor',
+    default: null,
+  },
   type: {
     type: String,
     enum: ['product_reel', 'service_reel', 'lifestyle', 'campus_event', 'achievement', 'campus_hack', 'funny_moment'],
