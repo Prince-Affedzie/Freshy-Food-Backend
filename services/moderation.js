@@ -38,13 +38,21 @@ const CONTENT_ADAPTERS = {
     remove: async (doc) => { doc.isDeleted = true; doc.text = "[removed by moderator]"; await doc.save(); },
   },
   Comment: {
-    // ADAPT ME if you have a separate Comment model for feed posts.
     model: () => require("../model/Comment"),
     getAuthorField: () => "author",
     getPreview: (doc) => (doc.text || "").slice(0, 80) || "(comment)",
     getMediaUrl: () => null,
-    hide: async (doc) => { doc.isFlagged = true; await doc.save(); },
-    remove: async (doc) => { doc.isDeleted = true; await doc.save(); },
+    hide: async (doc) => { 
+      doc.isFlagged = true; 
+      doc.status = "under_review"; 
+      await doc.save(); 
+    },
+    remove: async (doc) => { 
+      doc.isDeleted = true; 
+      doc.status = "deleted"; 
+      doc.deletedAt = new Date();
+      await doc.save(); 
+    },
   },
 };
 

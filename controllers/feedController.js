@@ -1,13 +1,15 @@
 const FeedPost = require('../model/FeedPost')
 const ProcessingJob = require('../model/ProcessingJob');
 const Vendor = require('../model/Vendor'); // Adjust path as needed
+const Comment = require('../model/Comment');
+const User = require('../model/User');
 const {uploadFeedImage,
   uploadFeedVideo,
   uploadMultipleFeedMedia,
   deleteFeedFile,
   deleteMultipleFeedFiles} = require('../config/supabaseS3')
-  const User = require('../model/User')
 const mongoose = require('mongoose')
+const commentService = require('../services/commentService');
 const { getVideoDetails, buildPlaybackUrls, isVideoReady, deleteVideo, } = require('../services/bunnyStream');
 
 
@@ -164,20 +166,149 @@ const toggleLike = async (req, res) => {
 // ─── Add comment ──────────────────────────────────────────────────────────
 const addComment = async (req, res) => {
   try {
-    const post = await FeedPost.findById(req.params.id);
-    if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
-
-    post.comments.push({
-      user: req.user.id,
-      text: req.body.text
+    const { postId, text, parentCommentId } = req.body;
+    
+    if (!text || !text.trim()) {
+      return res.status(400).json({ success: false, message: 'Comment text is required' });
+    }
+    
+    const comment = await commentService.createComment({
+      postId,
+      authorId: req.user.id || req.user._id,
+      text: text.trim(),
+      parentCommentId: parentCommentId || null,
     });
-
-    await post.save();
-    await post.populate('comments.user', 'firstName lastName profileImage');
-
-    res.json({ success: true, data: post.comments[post.comments.length - 1] });
+    
+    res.status(201).json({ success: true, data: comment });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Failed to add comment' });
+    console.error('Create comment error:', err);
+    res.status(err.statusCode || 500).json({ 
+      success: false, 
+      message: err.message || 'Failed to create comment' 
+    });
+  }
+};
+
+
+const getComments = async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const { page = 1, limit = 20, sort = 'newest' } = req.query;
+    
+    const result = await commentService.getComments({ postId, page, limit, sort });
+    
+    res.json({ success: true, data: result });
+  } catch (err) {
+    console.error('Get comments error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch comments' });
+  }
+};
+
+
+const getReplies = async (req, res) => {
+  try {
+    const { commentId } = req.params;
+    const { page = 1, limit = 10 } = req.query;
+    
+    const result = await commentService.getReplies({ commentId, page, limit });
+    
+    res.json({ success: true, data: result });
+  } catch (err) {
+    console.error('Get replies error:', err);
+    res.status(500).json({ success: false, message: 'Failed to fetch replies' });
+  }
+};
+
+// ─── Like/Unlike comment ──────────────────────────────────────────────────
+const toggleCommentLike = async (req, res) => {
+  try {
+    const { commentId } = req.params;
+    const result = await commentService.toggleCommentLike({
+      commentId,
+      userId: req.user.id || req.user._id,
+    });
+    
+    res.json({ success: true, data: result });
+  } catch (err) {
+    console.error('Toggle comment like error:', err);
+    res.status(err.statusCode || 500).json({ 
+      success: false, 
+      message: err.message || 'Failed to update like' 
+    });
+  }
+};
+
+// ─── Update comment ────────────────────────────────────────────────────────
+const updateComment = async (req, res) => {
+  try {
+    const { commentId } = req.params;
+    const { text } = req.body;
+    
+    if (!text || !text.trim()) {
+      return res.status(400).json({ success: false, message: 'Comment text is required' });
+    }
+    
+    const comment = await commentService.updateComment({
+      commentId,
+      userId: req.user.id || req.user._id,
+      text: text.trim(),
+    });
+    
+    res.json({ success: true, data: comment });
+  } catch (err) {
+    console.error('Update comment error:', err);
+    res.status(err.statusCode || 500).json({ 
+      success: false, 
+      message: err.message || 'Failed to update comment' 
+    });
+  }
+};
+
+// ─── Delete comment ────────────────────────────────────────────────────────
+const deleteComment = async (req, res) => {
+  try {
+    const { commentId } = req.params;
+    
+    await commentService.deleteComment({
+      commentId,
+      userId: req.user.id || req.user._id,
+      isModerator: req.user.role === 'admin' || req.user.role === 'moderator',
+    });
+    
+    res.json({ success: true, message: 'Comment deleted' });
+  } catch (err) {
+    console.error('Delete comment error:', err);
+    res.status(err.statusCode || 500).json({ 
+      success: false, 
+      message: err.message || 'Failed to delete comment' 
+    });
+  }
+};
+
+// ─── Report comment ────────────────────────────────────────────────────────
+const reportComment = async (req, res) => {
+  try {
+    const { commentId } = req.params;
+    const { reason, description } = req.body;
+    
+    if (!reason) {
+      return res.status(400).json({ success: false, message: 'Reason is required' });
+    }
+    
+    const report = await commentService.reportComment({
+      commentId,
+      reporterId: req.user.id || req.user._id,
+      reason,
+      description,
+    });
+    
+    res.status(201).json({ success: true, data: report });
+  } catch (err) {
+    console.error('Report comment error:', err);
+    res.status(err.statusCode || 500).json({ 
+      success: false, 
+      message: err.message || 'Failed to report comment' 
+    });
   }
 };
 
@@ -317,9 +448,9 @@ const getSavedPosts = async (req, res) => {
       .slice('savedPosts', [(page - 1) * limit, page * limit])
       .populate({
         path: 'savedPosts.post',
-        select: 'type title description media linkedProduct author likes comments createdAt',
+        select: 'type title description media linkedProduct author likes commentCount createdAt',
         populate: [
-          { path: 'author', select: 'firstName lastName profileImage' },
+          { path: 'author', select: 'role firstName lastName profileImage campus' },
           { path: 'linkedProduct', select: 'name price images' },
         ],
       })
@@ -329,20 +460,34 @@ const getSavedPosts = async (req, res) => {
       .filter(sp => sp.post) // Filter out deleted posts
       .map(sp => sp.post);
 
+    // Get the total count of saved posts (including those that might be deleted)
+    const totalSaved = user.savedPostsCount || 0;
+    
+    // Calculate pagination properly
+    const totalValidPosts = savedPosts.length;
+    const hasMore = (page * limit) < totalSaved;
+
     res.json({
       success: true,
       data: {
         posts: savedPosts,
-        total: user.savedPostsCount || 0,
-        hasMore: (page * limit) < (user.savedPostsCount || 0),
+        total: totalSaved,
+        hasMore,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: totalSaved,
+          totalPages: Math.ceil(totalSaved / limit),
+        },
       },
     });
   } catch (err) {
+    console.error('getSavedPosts error:', err);
     res.status(500).json({ success: false, message: 'Failed to fetch saved posts' });
   }
 };
 
-// ─── Admin: Approve/Reject post ───────────────────────────────────────────
+
 const moderatePost = async (req, res) => {
   try {
     const { status } = req.body; // 'approved' or 'rejected'
@@ -369,28 +514,76 @@ const moderatePost = async (req, res) => {
 const getPostDetail = async (req, res) => {
   try {
     const post = await FeedPost.findById(req.params.id)
-      .populate('author', 'firstName lastName profileImage campus')
+      .populate('author', 'role firstName lastName profileImage campus')
       .populate('linkedProduct', 'name price images description campus condition')
-      .populate('comments.user', 'firstName lastName profileImage')
       .lean();
 
     if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
 
     // Increment view
     await FeedPost.findByIdAndUpdate(req.params.id, { $inc: { views: 1 } });
+   
+    const comments = await Comment.find({
+      post: post._id,
+      parentComment: null, // Only top-level comments
+      status: 'visible',
+      isDeleted: false,
+    })
+      .sort({ createdAt: -1 })
+      .limit(20) // Limit initial comments
+      .populate('author', 'firstName lastName profileImage')
+      .populate({
+        path: 'replies',
+        match: { status: 'visible', isDeleted: false },
+        options: { sort: { createdAt: 1 }, limit: 3 }, // Show first 3 replies
+        populate: { path: 'author', select: 'firstName lastName profileImage' },
+      })
+      .lean();
 
-    res.json({ success: true, data: post });
+    // Add user-specific flags if user is authenticated
+    const userId = req.user?.id || req.user?._id;
+    let isLiked = false;
+    let isSaved = false;
+
+    if (userId) {
+      isLiked = post.likes?.some(id => id.toString() === userId.toString()) || false;
+      
+      const user = await User.findById(userId).select('savedPosts').lean();
+      isSaved = user?.savedPosts?.some(sp => 
+        sp.post?.toString() === post._id.toString()
+      ) || false;
+    }
+
+    // Prepare response without full likes/saves arrays (to reduce payload)
+    const postResponse = {
+      ...post,
+      likeCount: post.likes?.length || 0,
+      saveCount: post.saves?.length || 0,
+      commentCount: post.commentCount || 0,
+      isLiked,
+      isSaved,
+      comments,
+      // Remove full arrays to reduce payload
+      likes: undefined,
+      saves: undefined,
+    };
+
+    res.json({ 
+      success: true, 
+      data: postResponse,
+      message: 'Post fetched successfully',
+    });
   } catch (err) {
+    console.error('getPostDetail error:', err);
     res.status(500).json({ success: false, message: 'Failed to fetch post' });
   }
 };
 
+// ─── Get my feed posts ─────────────────────────────────────────────────────
 const getMyFeedPosts = async (req, res) => {
- console.log("I'm working")
   try {
     const { page = 1, limit = 20, type } = req.query;
-    const userId = req.user.id;
-    console.log(userId)
+    const userId = req.user.id || req.user._id;
 
     const query = { author: userId };
 
@@ -406,35 +599,49 @@ const getMyFeedPosts = async (req, res) => {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit))
-        .populate('author', 'firstName lastName profileImage campus')
+        .populate('author', 'role firstName lastName profileImage campus')
         .populate('linkedProduct', 'name price images')
+        .select('type title description media linkedProduct author likes commentCount views status createdAt updatedAt vendorId')
         .lean(),
       FeedPost.countDocuments(query),
     ]);
 
-    // Get stats
+    // Get stats using aggregation
     const stats = await FeedPost.aggregate([
       { $match: { author: new mongoose.Types.ObjectId(userId) } },
       {
         $group: {
           _id: null,
           totalPosts: { $sum: 1 },
-          totalLikes: { $sum: { $size: '$likes' } },
-          totalComments: { $sum: { $size: '$comments' } },
-          totalViews: { $sum: '$views' },
+          totalLikes: { $sum: { $size: { $ifNull: ['$likes', []] } } },
+          totalComments: { $sum: { $ifNull: ['$commentCount', 0] } },
+          totalViews: { $sum: { $ifNull: ['$views', 0] } },
+          totalSaves: { $sum: { $size: { $ifNull: ['$saves', []] } } },
         },
       },
     ]);
 
+    // Enrich posts with user-specific flags
+    const enrichedPosts = posts.map(post => ({
+      ...post,
+      likeCount: post.likes?.length || 0,
+      saveCount: post.saves?.length || 0,
+      isLiked: post.likes?.some(id => id.toString() === userId.toString()) || false,
+      // Remove full arrays to reduce payload
+      likes: undefined,
+      saves: undefined,
+    }));
+
     res.status(200).json({
       success: true,
       data: {
-        posts,
+        posts: enrichedPosts,
         stats: stats[0] || {
           totalPosts: 0,
           totalLikes: 0,
           totalComments: 0,
           totalViews: 0,
+          totalSaves: 0,
         },
         pagination: {
           page: parseInt(page),
@@ -445,11 +652,10 @@ const getMyFeedPosts = async (req, res) => {
       },
     });
   } catch (err) {
-    console.log('getMyFeedPosts error:', err);
+    console.error('getMyFeedPosts error:', err);
     res.status(500).json({ success: false, message: 'Failed to fetch your posts' });
   }
 };
-
 
 const updateMyFeedPost = async (req, res) => {
   try {
@@ -511,4 +717,10 @@ module.exports = {
   moderatePost,
   getMyFeedPosts,
   updateMyFeedPost,
+  getComments,
+  getReplies,
+  toggleCommentLike,
+  updateComment,
+  deleteComment,
+  reportComment,
 };

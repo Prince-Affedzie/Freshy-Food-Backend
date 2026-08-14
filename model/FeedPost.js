@@ -63,6 +63,7 @@ mediaStatus: { type: String, enum: ['ready', 'processing', 'failed'], default: '
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   }],
+  commentCount: { type: Number, default: 0 },
   comments: [{
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     text: String,
