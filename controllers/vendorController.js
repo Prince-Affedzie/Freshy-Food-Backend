@@ -20,6 +20,9 @@ const createVendor = async (req, res) => {
       campusArea,
       hostel,
       categories,
+      businessType,
+      searchTags,
+      openingHours,
       bio,
       whatsapp,
       instagram,
@@ -44,6 +47,19 @@ const createVendor = async (req, res) => {
         success: false,
         message: 'Invalid campus',
         validCampuses,
+      });
+    }
+
+    // 🔥 NEW: validate businessType if provided (schema default covers the
+    // omitted case, so this only rejects genuinely bad input)
+    const validBusinessTypes = ['product', 'service', 'both'];
+    if (businessType && !validBusinessTypes.includes(businessType)) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid businessType',
+        validBusinessTypes,
       });
     }
 
@@ -120,6 +136,16 @@ const createVendor = async (req, res) => {
         : categories.split(',').map(c => c.trim()).filter(Boolean);
     }
 
+    // 🔥 NEW: parse searchTags the same way — accepts either a real array
+    // (JSON clients) or a comma-separated string (multipart/form-data,
+    // same pattern this codebase already uses for categories).
+    let parsedSearchTags = [];
+    if (searchTags) {
+      parsedSearchTags = Array.isArray(searchTags)
+        ? searchTags
+        : searchTags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+    }
+
     // Build vendor data
     const vendorData = {
       user: user._id,
@@ -127,11 +153,14 @@ const createVendor = async (req, res) => {
       storeName: storeName || name,
       phone,
       campus: campus || undefined,
+      businessType: businessType || undefined, // schema default applies if omitted
       location: {
         campusArea: campusArea || '',
         hostel: hostel || '',
       },
       categories: parsedCategories.length > 0 ? parsedCategories : undefined,
+      searchTags: parsedSearchTags.length > 0 ? parsedSearchTags : undefined,
+      openingHours: openingHours || '',
       bio: bio || '',
       socialLinks: {
         whatsapp: whatsapp || '',
@@ -197,34 +226,48 @@ const createVendor = async (req, res) => {
 
 const getVendors = async (req, res) => {
   try {
-    const { 
-      search, 
-      campus, 
-      isVerified, 
+    const {
+      search,
+      campus,
+      isVerified,
       isActive,
       category,
+      businessType,   // NEW
       sortBy = 'createdAt',
       order = 'desc',
-      page = 1, 
-      limit = 20 
+      page = 1,
+      limit = 20
     } = req.query;
 
     // Build query
     const query = {};
 
-    // Search by name or store name (case-insensitive)
+    // Search by name, store name, phone, campus area, and free-text tags.
+    // FIX: this used to search a top-level `campusArea` field that
+    // doesn't exist on the schema — it's nested at `location.campusArea`,
+    // so area search was silently matching nothing. Also now searches
+    // `searchTags`, which is what actually makes queries like "braids" or
+    // "phone repair" work per the business-discovery search vision.
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: 'i' } },
         { storeName: { $regex: search, $options: 'i' } },
         { phone: { $regex: search, $options: 'i' } },
-        { campusArea: { $regex: search, $options: 'i' } },
+        { 'location.campusArea': { $regex: search, $options: 'i' } },
+        { searchTags: { $regex: search, $options: 'i' } },
+        { bio: { $regex: search, $options: 'i' } },
       ];
     }
 
     // Filter by campus
     if (campus) {
       query.campus = campus;
+    }
+
+    //  NEW: filter by business type — lets the client show "Shops",
+    // "Services", or both, matching the discovery vision's directory feel.
+    if (businessType) {
+      query.businessType = businessType;
     }
 
     // Filter by verification status
@@ -248,7 +291,9 @@ const getVendors = async (req, res) => {
 
     // Sorting
     const sortOptions = {};
-    const allowedSortFields = ['createdAt', 'name', 'storeName', 'rating', 'totalSales'];
+    //  NEW: 'isFeatured' added so featured/premium vendors can be
+    // surfaced first once that tier is wired up on the client.
+    const allowedSortFields = ['createdAt', 'name', 'storeName', 'rating', 'totalSales', 'isFeatured'];
     if (allowedSortFields.includes(sortBy)) {
       sortOptions[sortBy] = order === 'asc' ? 1 : -1;
     } else {
@@ -262,13 +307,16 @@ const getVendors = async (req, res) => {
         .skip(skip)
         .limit(limitNum)
         .populate('products', 'name price images condition isAvailable countInStock')
-        .populate('user', 'firstName lastName phone profileImage')
+        .populate('user', 'firstName lastName phone profileImage followersCount')
         .select('-__v')
         .lean(),
       Vendor.countDocuments(query),
     ]);
 
     // Calculate summary stats
+    //  NEW: businessType breakdown (product vs service vs both) so the
+    // Discover UI can show tabs like "Shops (24) · Services (9)" the way
+    // the business-discovery plan describes.
     const stats = await Vendor.aggregate([
       { $match: query },
       {
@@ -277,6 +325,9 @@ const getVendors = async (req, res) => {
           totalVendors: { $sum: 1 },
           verifiedVendors: { $sum: { $cond: ['$isVerified', 1, 0] } },
           averageRating: { $avg: '$rating' },
+          productBusinesses: { $sum: { $cond: [{ $eq: ['$businessType', 'product'] }, 1, 0] } },
+          serviceBusinesses: { $sum: { $cond: [{ $eq: ['$businessType', 'service'] }, 1, 0] } },
+          hybridBusinesses: { $sum: { $cond: [{ $eq: ['$businessType', 'both'] }, 1, 0] } },
         },
       },
     ]);
@@ -285,7 +336,14 @@ const getVendors = async (req, res) => {
       success: true,
       count: vendors.length,
       total,
-      stats: stats[0] || { totalVendors: 0, verifiedVendors: 0, averageRating: 0 },
+      stats: stats[0] || {
+        totalVendors: 0,
+        verifiedVendors: 0,
+        averageRating: 0,
+        productBusinesses: 0,
+        serviceBusinesses: 0,
+        hybridBusinesses: 0,
+      },
       pagination: {
         page: parseInt(page),
         limit: limitNum,
@@ -378,6 +436,19 @@ const updateMyVendorProfile = async (req, res) => {
     // Remove file objects from updatedData — we don't want to save those as strings
     delete updatedData.storeBanner;
     delete updatedData.profileImage;
+
+    //  NEW: categories and searchTags need the same comma-string → array
+    // parsing createVendor already does. Without this, a multipart form
+    // update (e.g. "fashion,accessories") would get saved as a single
+    // invalid enum string instead of an array and fail validation.
+    if (updatedData.categories && !Array.isArray(updatedData.categories)) {
+      updatedData.categories = updatedData.categories
+        .split(',').map(c => c.trim()).filter(Boolean);
+    }
+    if (updatedData.searchTags && !Array.isArray(updatedData.searchTags)) {
+      updatedData.searchTags = updatedData.searchTags
+        .split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+    }
 
     // Handle Store Banner Upload
     if (req.files && req.files.storeBanner) {
