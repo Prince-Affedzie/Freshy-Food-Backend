@@ -106,6 +106,7 @@ app.use("/api",aiRouter );
 app.use('/api',guestOrderRouter)
 app.use('/api',packagerouter)
 app.use('/api',productrouter)
+app.use('/api',vendorRouter)
 app.use('/api',orderrouter)
 app.use('/api',userRoute)
 app.use('/api',moderationRoute)
@@ -113,7 +114,6 @@ app.use('/api',userActionRouter)
 app.use('/api',paymentRoute)
 app.use('/api',adminRoutes)
 app.use('/api',authRouter)
-app.use('/api',vendorRouter)
 app.use('/api',chatRoute)
 app.use('/api',referralRouter)
 
@@ -131,6 +131,7 @@ mongoose.connect(mongo_connection_url)
         
         console.log('Listening on port 5000')
          testRedis();
+         
          scheduleCleanup();
          startBunnySweeper();
          }).catch((err)=>console.log(err))
