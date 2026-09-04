@@ -1,6 +1,6 @@
 const FeedPost = require('../model/FeedPost')
 const ProcessingJob = require('../model/ProcessingJob');
-const Vendor = require('../model/Vendor'); // Adjust path as needed
+const Vendor = require('../model/Vendor');
 const Comment = require('../model/Comment');
 const User = require('../model/User');
 const {uploadFeedImage,
@@ -12,11 +12,7 @@ const mongoose = require('mongoose')
 const commentService = require('../services/commentService');
 const { getVideoDetails, buildPlaybackUrls, isVideoReady, deleteVideo, } = require('../services/bunnyStream');
 
-
-// controllers/feedController.js — Updated createFeedPost
-
-// controllers/feedController.js
-
+// ─── Create feed post ───────────────────────────────────────────────────────
 const createFeedPost = async (req, res) => {
   try {
     const { type, title, description, tags, campus, linkedProduct, media } = req.body;
@@ -35,7 +31,7 @@ const createFeedPost = async (req, res) => {
       });
     }
 
-    //  Attach URLs immediately — no waiting for encoding
+    // Attach URLs immediately — no waiting for encoding
     const processedMedia = mediaItems.map((m) => {
       if (m.bunnyVideoId) {
         const { hlsUrl, thumbnailUrl } = buildPlaybackUrls(m.bunnyVideoId);
@@ -44,11 +40,10 @@ const createFeedPost = async (req, res) => {
           url: hlsUrl,
           thumbnailUrl,
           type: 'video',
-          status: 'ready', // URL is valid, encoding happens server-side
+          status: 'ready',
           uploadSource: 'bunny',
         };
       }
-      // Image from Supabase
       return {
         ...m,
         status: m.url ? 'ready' : 'processing',
@@ -91,6 +86,7 @@ const createFeedPost = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to create post' });
   }
 };
+
 // ─── Get feed (personalized by campus) ────────────────────────────────────
 const getFeed = async (req, res) => {
   try {
@@ -99,14 +95,12 @@ const getFeed = async (req, res) => {
     
     const query = { status: 'approved' };
     
-    // Filter by type if specified
     if (type) query.type = type;
 
     if (author) {
       query.author = author;
-      }
+    }
     
-    // Show campus-specific + ALL posts
     if (campus) {
       query.campus = { $in: [campus, 'ALL'] };
     } else {
@@ -114,8 +108,6 @@ const getFeed = async (req, res) => {
     }
 
     let sortOption = { createdAt: -1 };
-    //if (sort === 'trending') sortOption = { views: -1, likes: -1, createdAt: -1 };
-    //if (sort === 'popular') sortOption = { likes: -1, createdAt: -1 };
 
     const posts = await FeedPost.find(query)
       .sort(sortOption)
@@ -137,6 +129,93 @@ const getFeed = async (req, res) => {
   } catch (err) {
     console.error('getFeed error:', err);
     res.status(500).json({ success: false, message: 'Failed to fetch feed' });
+  }
+};
+
+// ─── Search feed posts ────────────────────────────────────────────────────
+const searchFeed = async (req, res) => {
+  try {
+    const { 
+      query: searchTerm, 
+      type, 
+      campus, 
+      page = 1, 
+      limit = 20,
+      sort = 'newest' 
+    } = req.query;
+    
+    const userCampus = req.user?.campus || 'UG';
+
+    // If no search term provided, return empty results
+    if (!searchTerm || !searchTerm.trim()) {
+      return res.json({
+        success: true,
+        data: {
+          posts: [],
+          pagination: { page: 1, limit: parseInt(limit), total: 0, totalPages: 0 }
+        }
+      });
+    }
+
+    const trimmedSearch = searchTerm.trim();
+    
+    // Build search query using MongoDB text search + regex fallback
+    const searchQuery = {
+      status: 'approved',
+      $or: [
+        { title: { $regex: trimmedSearch, $options: 'i' } },
+        { description: { $regex: trimmedSearch, $options: 'i' } },
+        { tags: { $in: [new RegExp(trimmedSearch, 'i')] } },
+        { type: { $regex: trimmedSearch, $options: 'i' } },
+      ],
+    };
+
+    // Filter by type if specified
+    if (type) {
+      searchQuery.type = type;
+    }
+
+    // Filter by campus
+    if (campus) {
+      searchQuery.campus = { $in: [campus, 'ALL'] };
+    } else {
+      searchQuery.campus = { $in: [userCampus, 'ALL'] };
+    }
+
+    // Sort options
+    let sortOption = { createdAt: -1 };
+    if (sort === 'oldest') sortOption = { createdAt: 1 };
+    if (sort === 'popular') sortOption = { likes: -1, createdAt: -1 };
+    if (sort === 'views') sortOption = { views: -1, createdAt: -1 };
+
+    // Execute search with pagination
+    const [posts, total] = await Promise.all([
+      FeedPost.find(searchQuery)
+        .sort(sortOption)
+        .skip((page - 1) * limit)
+        .limit(parseInt(limit))
+        .populate('author', 'role firstName lastName profileImage campus')
+        .populate('linkedProduct', 'name price images')
+        .lean(),
+      FeedPost.countDocuments(searchQuery),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        posts,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          totalPages: Math.ceil(total / parseInt(limit)),
+        },
+        searchTerm: trimmedSearch,
+      },
+    });
+  } catch (err) {
+    console.error('searchFeed error:', err);
+    res.status(500).json({ success: false, message: 'Failed to search feed posts' });
   }
 };
 
@@ -189,14 +268,12 @@ const addComment = async (req, res) => {
   }
 };
 
-
 const getComments = async (req, res) => {
   try {
     const { id } = req.params;
-    
     const { page = 1, limit = 20, sort = 'newest' } = req.query;
     
-    const result = await commentService.getComments({ postId:id, page, limit, sort });
+    const result = await commentService.getComments({ postId: id, page, limit, sort });
     
     res.json({ success: true, data: result });
   } catch (err) {
@@ -204,7 +281,6 @@ const getComments = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to fetch comments' });
   }
 };
-
 
 const getReplies = async (req, res) => {
   try {
@@ -220,7 +296,6 @@ const getReplies = async (req, res) => {
   }
 };
 
-// ─── Like/Unlike comment ──────────────────────────────────────────────────
 const toggleCommentLike = async (req, res) => {
   try {
     const { commentId } = req.params;
@@ -239,7 +314,6 @@ const toggleCommentLike = async (req, res) => {
   }
 };
 
-// ─── Update comment ────────────────────────────────────────────────────────
 const updateComment = async (req, res) => {
   try {
     const { commentId } = req.params;
@@ -265,7 +339,6 @@ const updateComment = async (req, res) => {
   }
 };
 
-// ─── Delete comment ────────────────────────────────────────────────────────
 const deleteComment = async (req, res) => {
   try {
     const { commentId } = req.params;
@@ -286,7 +359,6 @@ const deleteComment = async (req, res) => {
   }
 };
 
-// ─── Report comment ────────────────────────────────────────────────────────
 const reportComment = async (req, res) => {
   try {
     const { commentId } = req.params;
@@ -313,7 +385,6 @@ const reportComment = async (req, res) => {
   }
 };
 
-// ─── Increment view ───────────────────────────────────────────────────────
 const incrementView = async (req, res) => {
   try {
     await FeedPost.findByIdAndUpdate(req.params.id, { $inc: { views: 1 } });
@@ -323,7 +394,6 @@ const incrementView = async (req, res) => {
   }
 };
 
-// ─── Get trending posts ───────────────────────────────────────────────────
 const getTrendingPosts = async (req, res) => {
   try {
     const posts = await FeedPost.find({ status: 'approved', isTrending: true })
@@ -338,7 +408,6 @@ const getTrendingPosts = async (req, res) => {
   }
 };
 
-// ─── Delete feed post ─────────────────────────────────────────────────────
 const deleteFeedPost = async (req, res) => {
   try {
     const post = await FeedPost.findById(req.params.id);
@@ -347,7 +416,6 @@ const deleteFeedPost = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Post not found' });
     }
 
-    // Check ownership — only the author or an admin can delete
     const isAuthor = post.author.toString() === req.user.id.toString();
     const isAdmin = req.user.role === 'admin';
 
@@ -355,30 +423,24 @@ const deleteFeedPost = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized to delete this post' });
     }
 
-    // Delete associated media
     if (post.media?.length > 0) {
       for (const media of post.media) {
         if (media.uploadSource === 'bunny' && media.bunnyVideoId) {
-          // Delete from Bunny Stream
           try {
             await deleteVideo(media.bunnyVideoId);
             console.log(`🗑️ Deleted Bunny video: ${media.bunnyVideoId}`);
           } catch (err) {
             console.error(`Failed to delete Bunny video ${media.bunnyVideoId}:`, err.message);
-            // Continue — don't block post deletion if Bunny delete fails
           }
         } else if (media.url) {
-          // Delete from Supabase
           try {
             await deleteSingleFile(media.url);
           } catch (err) {
             console.error(`Failed to delete Supabase file:`, err.message);
-            // Continue — don't block post deletion if Supabase delete fails
           }
         }
       }
 
-      // Also do batch Supabase cleanup as fallback
       const supabaseUrls = post.media
         .filter(m => m.uploadSource !== 'bunny' && m.url)
         .map(m => m.url);
@@ -388,7 +450,6 @@ const deleteFeedPost = async (req, res) => {
       }
     }
 
-    // Delete the post
     await FeedPost.findByIdAndDelete(req.params.id);
 
     res.json({ success: true, message: 'Post deleted successfully' });
@@ -397,9 +458,7 @@ const deleteFeedPost = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to delete post' });
   }
 };
-// Also add these helper functions if not already present:
 
-// ─── Save/Unsave post ─────────────────────────────────────────────────────
 const toggleSave = async (req, res) => {
   try {
     const post = await FeedPost.findById(req.params.id);
@@ -408,18 +467,15 @@ const toggleSave = async (req, res) => {
     const userId = req.user.id;
     const user = await User.findById(userId);
 
-    // Check if already saved
     const savedIndex = user.savedPosts.findIndex(
       sp => sp.post.toString() === req.params.id
     );
 
     if (savedIndex > -1) {
-      // Unsave
       user.savedPosts.splice(savedIndex, 1);
       user.savedPostsCount = Math.max(0, user.savedPostsCount - 1);
       post.saves.pull(userId);
     } else {
-      // Save
       user.savedPosts.push({ post: req.params.id, savedAt: new Date() });
       user.savedPostsCount += 1;
       post.saves.push(userId);
@@ -431,7 +487,7 @@ const toggleSave = async (req, res) => {
     res.json({
       success: true,
       data: {
-        isSaved: savedIndex === -1, // true if just saved
+        isSaved: savedIndex === -1,
         saveCount: post.saves.length,
       },
     });
@@ -440,7 +496,6 @@ const toggleSave = async (req, res) => {
   }
 };
 
-// ─── Get saved posts ──────────────────────────────────────────────────────
 const getSavedPosts = async (req, res) => {
   try {
     const { page = 1, limit = 20 } = req.query;
@@ -458,14 +513,10 @@ const getSavedPosts = async (req, res) => {
       .lean();
 
     const savedPosts = user.savedPosts
-      .filter(sp => sp.post) // Filter out deleted posts
+      .filter(sp => sp.post)
       .map(sp => sp.post);
 
-    // Get the total count of saved posts (including those that might be deleted)
     const totalSaved = user.savedPostsCount || 0;
-    
-    // Calculate pagination properly
-    const totalValidPosts = savedPosts.length;
     const hasMore = (page * limit) < totalSaved;
 
     res.json({
@@ -488,10 +539,9 @@ const getSavedPosts = async (req, res) => {
   }
 };
 
-
 const moderatePost = async (req, res) => {
   try {
-    const { status } = req.body; // 'approved' or 'rejected'
+    const { status } = req.body;
     
     if (!['approved', 'rejected'].includes(status)) {
       return res.status(400).json({ success: false, message: 'Invalid status' });
@@ -511,7 +561,6 @@ const moderatePost = async (req, res) => {
   }
 };
 
-// ─── Get single post detail ───────────────────────────────────────────────
 const getPostDetail = async (req, res) => {
   try {
     const post = await FeedPost.findById(req.params.id)
@@ -521,27 +570,25 @@ const getPostDetail = async (req, res) => {
 
     if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
 
-    // Increment view
     await FeedPost.findByIdAndUpdate(req.params.id, { $inc: { views: 1 } });
    
     const comments = await Comment.find({
       post: post._id,
-      parentComment: null, // Only top-level comments
+      parentComment: null,
       status: 'visible',
       isDeleted: false,
     })
       .sort({ createdAt: -1 })
-      .limit(20) // Limit initial comments
+      .limit(20)
       .populate('author', 'firstName lastName profileImage')
       .populate({
         path: 'replies',
         match: { status: 'visible', isDeleted: false },
-        options: { sort: { createdAt: 1 }, limit: 3 }, // Show first 3 replies
+        options: { sort: { createdAt: 1 }, limit: 3 },
         populate: { path: 'author', select: 'firstName lastName profileImage' },
       })
       .lean();
 
-    // Add user-specific flags if user is authenticated
     const userId = req.user?.id || req.user?._id;
     let isLiked = false;
     let isSaved = false;
@@ -555,7 +602,6 @@ const getPostDetail = async (req, res) => {
       ) || false;
     }
 
-    // Prepare response without full likes/saves arrays (to reduce payload)
     const postResponse = {
       ...post,
       likeCount: post.likes?.length || 0,
@@ -564,7 +610,6 @@ const getPostDetail = async (req, res) => {
       isLiked,
       isSaved,
       comments,
-      // Remove full arrays to reduce payload
       likes: undefined,
       saves: undefined,
     };
@@ -580,7 +625,6 @@ const getPostDetail = async (req, res) => {
   }
 };
 
-// ─── Get my feed posts ─────────────────────────────────────────────────────
 const getMyFeedPosts = async (req, res) => {
   try {
     const { page = 1, limit = 20, type } = req.query;
@@ -588,7 +632,6 @@ const getMyFeedPosts = async (req, res) => {
 
     const query = { author: userId };
 
-    // Optional: filter by post type
     if (type) {
       query.type = type;
     }
@@ -607,7 +650,6 @@ const getMyFeedPosts = async (req, res) => {
       FeedPost.countDocuments(query),
     ]);
 
-    // Get stats using aggregation
     const stats = await FeedPost.aggregate([
       { $match: { author: new mongoose.Types.ObjectId(userId) } },
       {
@@ -622,13 +664,11 @@ const getMyFeedPosts = async (req, res) => {
       },
     ]);
 
-    // Enrich posts with user-specific flags
     const enrichedPosts = posts.map(post => ({
       ...post,
       likeCount: post.likes?.length || 0,
       saveCount: post.saves?.length || 0,
       isLiked: post.likes?.some(id => id.toString() === userId.toString()) || false,
-      // Remove full arrays to reduce payload
       likes: undefined,
       saves: undefined,
     }));
@@ -676,19 +716,15 @@ const updateMyFeedPost = async (req, res) => {
       }
     });
 
-    // Handle linked product
     if (req.body.linkedProduct !== undefined) {
       post.linkedProduct = req.body.linkedProduct || null;
     }
 
-    // Handle media (replace all)
     if (req.files?.length > 0) {
-      // Delete old media
       if (post.media?.length > 0) {
         const oldUrls = post.media.map(m => m.url).filter(Boolean);
         await deleteMultipleFeedFiles(oldUrls);
       }
-      // Upload new media
       const mediaUrls = await uploadMultipleFeedMedia(req.files);
       post.media = mediaUrls.map(m => ({ url: m.url, type: m.type }));
     }
@@ -707,6 +743,7 @@ const updateMyFeedPost = async (req, res) => {
 module.exports = {
   createFeedPost,
   getFeed,
+  searchFeed,
   getTrendingPosts,
   getPostDetail,
   getSavedPosts,

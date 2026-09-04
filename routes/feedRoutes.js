@@ -7,6 +7,7 @@ const { feedUpload } = require('../Utils/mutlerConfig');
 const {
   createFeedPost,
   getFeed,
+  searchFeed,
   getTrendingPosts,
   getPostDetail,
   getSavedPosts,
@@ -29,6 +30,7 @@ const {
 
 // ─── Public/Feed routes (auth required) ───────────────────────────────────
 feedRoutes.get('/feed', getFeed);
+feedRoutes.get('/feed/search',searchFeed);
 feedRoutes.get('/feed/trending', auth, getTrendingPosts);
 feedRoutes.get('/feed/saved', auth, getSavedPosts);
 feedRoutes.get('/feed/:id', auth, getPostDetail);
