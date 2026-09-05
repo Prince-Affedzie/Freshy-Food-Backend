@@ -565,6 +565,16 @@ const getFollowing = async (req, res) => {
   }
 };
 
+
+
+const getMyFollowingIds = async (req, res) => {
+  const user = await User.findById(req.user.id)
+    .select('following')
+    .lean();
+
+  res.json({ following: (user.following || []).map(id => id.toString()) });
+};
+
   
 
 
@@ -573,7 +583,7 @@ const getFollowing = async (req, res) => {
 
 module.exports = {signUp,login,vendor_login,logout,updateUser,deleteAccount,markNotificationAsRead,signUpByGoogle,google_login,appleSignUpOrLogin,
     getNotifications,deleteBulkNotification,updatePushToken,deleteNotification,
-    createNotification,followUser,getFollowers,getFollowing}
+    createNotification,followUser,getFollowers,getFollowing,getMyFollowingIds}
 
 
 
