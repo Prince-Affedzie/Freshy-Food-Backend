@@ -44,6 +44,15 @@ const feedUpload = multer({
   fileFilter,
 });
 
+const storyUpload =  multer({
+  storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024,  // 40 max per file
+    files: 1,                     // Max 1 file
+  },
+  fileFilter,
+});
+
 // ─── Single image upload (5MB) ─────────────────────────────────────────────
 const imageUpload = multer({
   storage,
@@ -51,4 +60,4 @@ const imageUpload = multer({
   fileFilter: imageFilter,
 });
 
-module.exports = { upload, feedUpload, imageUpload };
+module.exports = { upload, feedUpload, storyUpload, imageUpload };

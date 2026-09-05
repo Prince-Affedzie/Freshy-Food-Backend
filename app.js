@@ -10,6 +10,7 @@ const User = require('./model/User');
 const admin = require('firebase-admin');
 require('dotenv').config()
 const NotificationService = require('./services/notificationService');
+const StoryService = require ('./services/storyService')
 const {authenticateSocketConnection} = require('./Validators/authenticateSocketConnection')
 const Product = require('./model/Product');
 const Vendor = require('./model/Vendor');
@@ -35,6 +36,7 @@ const webHookRouter = require('./routes/webHookRoutes')
 const feedRoutes = require('./routes/feedRoutes')
 const uploadRouter = require('./routes/uploadRoutes')
 const moderationRoute = require('./routes/moderationRoutes')
+const storyRoutes = require('./routes/storyRoutes')
 
 const {messagingSocket} = require("./services/messagingService")
 
@@ -83,6 +85,7 @@ const io = new Server(server,{
 
 io.use(authenticateSocketConnection)
 const notificationService = new NotificationService(io);
+const storyService = new StoryService();
 
 
 io.on('connection',(socket)=>{
@@ -101,6 +104,7 @@ io.on('connection',(socket)=>{
 
 //app.use('/api',webHookRouter)
 app.use('/api',feedRoutes)
+app.use('/api',storyRoutes)
 app.use('/api',uploadRouter)
 app.use("/api",aiRouter );
 app.use('/api',guestOrderRouter)
@@ -117,8 +121,9 @@ app.use('/api',authRouter)
 app.use('/api',chatRoute)
 app.use('/api',referralRouter)
 
-
+//StoryService
 app.set('notificationService', notificationService);
+app.set('storyService', storyService);
 
 
 

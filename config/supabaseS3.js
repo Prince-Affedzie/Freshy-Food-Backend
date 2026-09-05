@@ -374,6 +374,8 @@ const uploadProductImage = async (file) => {
   });
 };
 
+
+
 const uploadMultipleProductImages = async (files = []) => {
   if (!files.length) return [];
 
@@ -392,6 +394,17 @@ const uploadFeedImage = async (file) => {
   validateFile(file, "feed_image");
 
   return uploadToSupabase(file, "feed", {
+    width: DIMENSIONS.feed.width,
+    quality: DIMENSIONS.feed.quality,
+  });
+};
+
+
+// Story Image
+const uploadStoryImage = async (file) => {
+  validateFile(file, "story_image");
+
+  return uploadToSupabase(file, "story", {
     width: DIMENSIONS.feed.width,
     quality: DIMENSIONS.feed.quality,
   });
@@ -506,11 +519,16 @@ module.exports = {
   deleteMultipleProductImages: deleteMultipleFiles,
 
   // Feed media
+  
   uploadFeedImage,
   uploadFeedVideo,
   uploadMultipleFeedMedia,
   deleteFeedFile: deleteSingleFile,
   deleteMultipleFeedFiles: deleteMultipleFiles,
+
+  // Story
+  uploadStoryImage,
+  deleteStoryImage:deleteSingleFile,
 
   // Generic
   uploadToSupabase,
