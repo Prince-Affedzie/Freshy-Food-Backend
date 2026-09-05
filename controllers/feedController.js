@@ -223,39 +223,72 @@ const searchFeed = async (req, res) => {
 const toggleLike = async (req, res) => {
   try {
     const post = await FeedPost.findById(req.params.id);
+    const notificationService = req.app.get("notificationService");
     if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
 
     const userId = req.user.id;
     const isLiked = post.likes.includes(userId);
 
     if (isLiked) {
+      // Unlike - remove from likes
       post.likes.pull(userId);
     } else {
+      // Like - add to likes
       post.likes.push(userId);
     }
 
+    // Save the post FIRST
     await post.save();
+
+    // Send notification AFTER successful save (only for new likes)
+    if (!isLiked) {
+      // Fetch the liker's user info for a better notification
+      const likerUser = await User.findById(userId).select('firstName lastName profileImage');
+      
+      if (likerUser) {
+        await notificationService.notifyPostLiked({
+          postAuthorId: post.author,
+          likerUser,
+          postId: post._id,
+          postTitle: post.title,
+        });
+      }
+    }
 
     res.json({ success: true, data: { isLiked: !isLiked, likeCount: post.likes.length } });
   } catch (err) {
+    console.error('toggleLike error:', err);
     res.status(500).json({ success: false, message: 'Failed to toggle like' });
   }
 };
-
 // ─── Add comment ──────────────────────────────────────────────────────────
 const addComment = async (req, res) => {
   try {
     const { postId, text, parentCommentId } = req.body;
+    const notificationService = req.app.get("notificationService");
     
     if (!text || !text.trim()) {
       return res.status(400).json({ success: false, message: 'Comment text is required' });
     }
+
+    const post = await FeedPost.findById(postId);
+    if (!post) return res.status(404).json({ success: false, message: 'Post not found' });
+    const user = await User.findById(req.user.id).select('firstName lastName profileImage');
     
     const comment = await commentService.createComment({
       postId,
       authorId: req.user.id || req.user._id,
       text: text.trim(),
       parentCommentId: parentCommentId || null,
+    });
+
+
+    await notificationService.notifyPostCommented({
+      postAuthorId: post.author,
+      commenterUser: user,
+      postId: post._id,
+      postTitle: post.title,
+      commentText: text,
     });
     
     res.status(201).json({ success: true, data: comment });

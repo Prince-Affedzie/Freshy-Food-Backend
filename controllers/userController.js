@@ -459,6 +459,7 @@ const followUser = async (req, res) => {
   try {
     const targetUserId = req.params.id;
     const currentUserId = req.user.id;
+    const notificationService = req.app.get("notificationService");
 
     if (targetUserId === currentUserId.toString()) {
       return res.status(400).json({ success: false, message: "You can't follow yourself" });
@@ -490,6 +491,13 @@ const followUser = async (req, res) => {
 
     await currentUser.save();
     await targetUser.save();
+
+    if(!isFollowing){
+      await notificationService.notifyNewFollower({
+      followedUserId: targetUser._id,
+      followerUser: currentUser,
+     });
+     }
 
     res.json({
       success: true,
