@@ -7,6 +7,8 @@ const {
   createStory,
   getActiveStories,
   getVendorStories,
+  getMyStories,
+  getStoryStats,
   viewStory,
   reactToStory,
   deleteStory,
@@ -31,5 +33,11 @@ storyRoutes.post('/stories/:storyId/react', auth, reactToStory);
 
 // Delete story (author only)
 storyRoutes.delete('/stories/:storyId', auth, deleteStory);
+
+// Get my own stories with stats (for vendor dashboard)
+storyRoutes.get('/stories/mine', auth, getMyStories);
+
+// Get detailed stats for a specific story
+storyRoutes.get('/stories/:storyId/stats', auth, getStoryStats);
 
 module.exports = storyRoutes;

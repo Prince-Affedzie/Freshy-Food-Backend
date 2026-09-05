@@ -100,6 +100,63 @@ const getVendorStories = async (req, res) => {
   }
 };
 
+// ─── Get my own stories with stats (for vendor dashboard) ────────────────
+const getMyStories = async (req, res) => {
+  try {
+    const storyService = getStoryService(req);
+    const { page = 1, limit = 20, status = 'all' } = req.query;
+    
+    // Get vendor ID from authenticated user
+    const vendor = await Vendor.findOne({ user: req.user.id }).select('_id').lean();
+    if (!vendor) {
+      return res.status(403).json({ success: false, message: 'You are not a vendor' });
+    }
+
+    const stories = await storyService.getMyStories({
+      vendorId: vendor._id,
+      userId: req.user.id,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      status,
+    });
+
+    res.json({ success: true, data: stories });
+  } catch (error) {
+    console.error('Get my stories error:', error);
+    res.status(error.statusCode || 500).json({ 
+      success: false, 
+      message: error.message || 'Failed to fetch your stories' 
+    });
+  }
+};
+
+// ─── Get story stats (detailed views and reactions) ──────────────────────
+const getStoryStats = async (req, res) => {
+  try {
+    const storyService = getStoryService(req);
+    const { storyId } = req.params;
+    
+    // Get vendor ID from authenticated user
+    const vendor = await Vendor.findOne({ user: req.user.id }).select('_id').lean();
+    if (!vendor) {
+      return res.status(403).json({ success: false, message: 'You are not a vendor' });
+    }
+
+    const stats = await storyService.getStoryStats({
+      storyId,
+      vendorId: vendor._id,
+    });
+
+    res.json({ success: true, data: stats });
+  } catch (error) {
+    console.error('Get story stats error:', error);
+    res.status(error.statusCode || 500).json({ 
+      success: false, 
+      message: error.message || 'Failed to fetch story stats' 
+    });
+  }
+};
+
 // ─── View story ───────────────────────────────────────────────────────────
 const viewStory = async (req, res) => {
   try {
@@ -173,6 +230,8 @@ module.exports = {
   createStory,
   getActiveStories,
   getVendorStories,
+  getMyStories,
+  getStoryStats,
   viewStory,
   reactToStory,
   deleteStory,

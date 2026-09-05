@@ -272,6 +272,122 @@ class StoryService {
       throw error;
     }
   }
+
+
+  // Get my own stories with stats
+async getMyStories({ vendorId, userId, page = 1, limit = 20, status = 'all' }) {
+  try {
+    const query = { vendor: vendorId };
+    
+    if (status === 'active') {
+      query.status = 'active';
+      query.expiresAt = { $gt: new Date() };
+    } else if (status === 'expired') {
+      query.status = 'active';
+      query.expiresAt = { $lte: new Date() };
+    } else if (status === 'archived') {
+      query.status = 'archived';
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [stories, total] = await Promise.all([
+      VendorStory.find(query)
+        .populate('linkedProduct', 'name price images')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      VendorStory.countDocuments(query),
+    ]);
+
+    const enrichedStories = stories.map(story => ({
+      ...story,
+      viewCount: story.views?.length || 0,
+      reactionCount: story.reactions?.length || 0,
+      reactions: story.reactions || [],
+      views: story.views || [],
+    }));
+
+    return {
+      stories: enrichedStories,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        totalPages: Math.ceil(total / parseInt(limit)),
+      },
+    };
+  } catch (error) {
+    console.error('Get my stories error:', error);
+    throw error;
+  }
+}
+
+// Get detailed stats for a specific story
+async getStoryStats({ storyId, vendorId }) {
+  try {
+    const story = await VendorStory.findOne({
+      _id: storyId,
+      vendor: vendorId,
+    })
+      .populate('views.user', 'firstName lastName profileImage')
+      .populate('reactions.user', 'firstName lastName profileImage')
+      .populate('linkedProduct', 'name price images')
+      .lean();
+
+    if (!story) {
+      const err = new Error('Story not found or you are not authorized');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    // Group reactions by emoji
+    const reactionSummary = {};
+    story.reactions?.forEach(r => {
+      if (reactionSummary[r.emoji]) {
+        reactionSummary[r.emoji].count++;
+      } else {
+        reactionSummary[r.emoji] = { emoji: r.emoji, count: 1 };
+      }
+    });
+
+    // Get unique viewers (in case someone viewed multiple times)
+    const uniqueViewers = new Map();
+    story.views?.forEach(v => {
+      if (v.user?._id) {
+        uniqueViewers.set(v.user._id.toString(), v);
+      }
+    });
+
+    return {
+      storyId: story._id,
+      caption: story.caption,
+      sticker: story.sticker,
+      media: story.media,
+      createdAt: story.createdAt,
+      expiresAt: story.expiresAt,
+      status: story.status,
+      linkedProduct: story.linkedProduct,
+      viewCount: story.views?.length || 0,
+      uniqueViewCount: uniqueViewers.size,
+      reactionCount: story.reactions?.length || 0,
+      reactionSummary: Object.values(reactionSummary),
+      viewers: Array.from(uniqueViewers.values()).map(v => ({
+        user: v.user,
+        viewedAt: v.viewedAt,
+      })),
+      reactions: story.reactions?.map(r => ({
+        user: r.user,
+        emoji: r.emoji,
+        createdAt: r.createdAt,
+      })),
+    };
+  } catch (error) {
+    console.error('Get story stats error:', error);
+    throw error;
+  }
+}
 }
 
 module.exports = StoryService;
