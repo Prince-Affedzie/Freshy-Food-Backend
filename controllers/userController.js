@@ -78,7 +78,8 @@ const signUpByGoogle = async (req, res) => {
         audience: [
           process.env.GOOGLE_WEB_CLIENT_ID,
           process.env.GOOGLE_ANDROID_CLIENT_ID,
-          process.env.GOOGLE_IOS_CLIENT_ID
+          process.env.GOOGLE_IOS_CLIENT_ID,
+          process.env.GOOGLE_CEDIMART2_WEB_CLIENT_ID
         ],
     });
     
@@ -143,7 +144,8 @@ const google_login = async(req,res)=>{
         audience: [
           process.env.GOOGLE_WEB_CLIENT_ID,
           process.env.GOOGLE_ANDROID_CLIENT_ID,
-          process.env.GOOGLE_IOS_CLIENT_ID
+          process.env.GOOGLE_IOS_CLIENT_ID,
+          process.env.GOOGLE_CEDIMART2_WEB_CLIENT_ID
         ],
       });
 
