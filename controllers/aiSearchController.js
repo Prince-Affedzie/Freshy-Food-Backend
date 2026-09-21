@@ -6,6 +6,7 @@ const redis = require("../config/redis");
 const { runAgentTurn, resolveToolCall, resolveDirectAnswer } = require("../services/aiSearchService");
 const rankResults = require("../Utils/rankResults");
 const {generateProductDetails} = require("../services/aiProductDetailsGenerator")
+const { extractSearchIntentFromImage } = require("../services/visualSearchService");
 const fs = require("fs");
 
 const SESSION_TTL_SECONDS = 30 * 60; // 30 min of inactivity clears conversation context
@@ -151,4 +152,128 @@ const analyzeProductImage = async (req, res) => {
   }
 };
 
-module.exports = { aiSearch,analyzeProductImage };
+
+
+/**
+ * Handles an end-to-end "Search by Photo" request from a student.
+ */
+const searchByImageHandler = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "Please upload an image to search.",
+      });
+    }
+
+    const { buffer, mimetype } = req.file;
+    const { userNotes, conversationId: incomingConversationId } = req.body;
+    const campus = req.query.campus || req.body.campus || null;
+
+    // 1. Manage session history in Redis (same conversation model as aiSearch)
+    const conversationId = incomingConversationId || randomUUID();
+    const sessionKey = `ai_session:${conversationId}`;
+
+    const rawHistory = await redis.get(sessionKey);
+    const history = rawHistory ? JSON.parse(rawHistory) : [];
+
+    // 2. Extract visual search intent using Gemini
+    const searchIntent = await extractSearchIntentFromImage(buffer, mimetype, userNotes);
+    console.log("Extracted Visual Search Intent:", searchIntent);
+
+    // 3. Build MongoDB filter (matching the logic in aiSearch)
+    let filter = { isAvailable: true };
+    if (searchIntent.searchTerm) filter.$text = {$search: searchIntent.searchTerm };
+    if (searchIntent.category && searchIntent.category !== "none") filter.category = searchIntent.category;
+    if (searchIntent.subcategory && searchIntent.subcategory !== "none") filter.subcategory = searchIntent.subcategory;
+    if (campus) filter.campus = campus;
+
+    // 4. Query Mongoose database with fallback for text search
+    let products = await Product.find(filter).limit(30).lean();
+    if (products.length === 0 && filter.$text) {
+      const { $text, ...relaxedFilter } = filter;
+      products = await Product.find(relaxedFilter).limit(30).lean();
+    }
+
+    // 5. Rank and slice matches
+    const rankingIntent = {
+      searchTerm: searchIntent.searchTerm,
+      category: searchIntent.category,
+      subcategory: searchIntent.subcategory,
+      query: searchIntent.searchTerm,
+    };
+    const rankedMatches = rankResults(products, rankingIntent).slice(0, 20);
+
+    // 6. Minimize DB results for Gemini tool resolution
+    const minimizedDbResult = rankedMatches.map((p) => ({
+      id: p._id,
+      name: p.name,
+      price: `GHS ${p.price}`,
+      condition: p.condition,
+      campus: p.campus,
+    }));
+
+    // 7. Construct user message turn and synthetic tool call turn
+    const userQueryText = `[Visual Search Upload] Student uploaded a photo of: "${searchIntent.detectedItem}".${
+      userNotes ? ` Note: "${userNotes}"` : ""
+    }`;
+
+    const userTurn = {
+      role: "user",
+      parts: [{ text: userQueryText }],
+    };
+
+    const contentsAfterUserTurn = [...history, userTurn];
+
+    const syntheticAgentToolCallTurn = {
+      candidates: [
+        {
+          content: {
+            role: "model",
+            parts: [
+              {
+                functionCall: {
+                  name: "searchCediMartDatabase",
+                  args: {
+                    searchTerm: searchIntent.searchTerm,
+                    category: searchIntent.category,
+                    subcategory: searchIntent.subcategory,
+                  },
+                },
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    // 8. Resolve tool call with Gemini and persist history to Redis
+    const { text, history: updatedHistory } = await resolveToolCall(
+      contentsAfterUserTurn,
+      syntheticAgentToolCallTurn,
+      minimizedDbResult
+    );
+
+    await redis.set(sessionKey, JSON.stringify(updatedHistory), "EX", SESSION_TTL_SECONDS);
+
+    // 9. Return structured payload consistent with aiSearch
+    return res.status(200).json({
+      success: true,
+      conversationId,
+      detectedItem: searchIntent.detectedItem,
+      extractedSearchIntent: searchIntent,
+      aiResponse: text,
+      count: rankedMatches.length,
+      results: rankedMatches,
+    });
+  } catch (error) {
+    console.error("Visual Search Controller Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Visual search failed—try searching with text instead!",
+      error: error.message,
+    });
+  }
+};
+
+module.exports = { aiSearch,analyzeProductImage,searchByImageHandler };

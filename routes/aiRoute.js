@@ -1,7 +1,7 @@
 const express = require("express");
 const rateLimit = require("express-rate-limit");
 const aiRouter = express.Router();
-const { aiSearch,analyzeProductImage } = require("../controllers/aiSearchController");
+const { aiSearch,analyzeProductImage,searchByImageHandler } = require("../controllers/aiSearchController");
 const { upload } = require('../Utils/mutlerConfig');
 
 
@@ -15,5 +15,6 @@ const aiSearchLimiter = rateLimit({
 
 aiRouter.post("/ai/i/search", aiSearchLimiter, aiSearch);
 aiRouter.post("/ai/i/anayze_image",aiSearchLimiter,upload.single('productImage'),analyzeProductImage)
+aiRouter.post("/ai/visual-search",upload.single('productImage'),searchByImageHandler)
 
 module.exports = aiRouter;
