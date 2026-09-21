@@ -416,10 +416,10 @@ const createProduct = asyncHandler(async (req, res) => {
       couponEligible,
     } = req.body;
 
-    if (!name || !category || !price || !campus ) {
+    if (!name || !category || !price  ) {
       return res.status(400).json({
         success: false,
-        message: 'Name, category, price, campus, and campus area are required'
+        message: 'Name, category, price are required'
       });
     }
 

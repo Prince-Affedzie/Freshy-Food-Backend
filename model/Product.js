@@ -132,7 +132,7 @@ const productSchema = new mongoose.Schema(
 
     campus: {
       type: String,
-      required: true,
+      required: false,
       enum: [
         "UG",
         "KNUST",
@@ -147,11 +147,11 @@ const productSchema = new mongoose.Schema(
     },
 
     location: {
-      campusArea: {
+      city: {
         type: String,
         required: false,
       },
-      hostel: {
+      area: {
         type: String,
       },
     },
@@ -248,5 +248,9 @@ const productSchema = new mongoose.Schema(
 productSchema.index({ category: 1, subcategory: 1 });
 productSchema.index({ campus: 1, category: 1 });
 productSchema.index({ name: 'text', description: 'text', brand: 'text' });
+productSchema.virtual('locationLabel').get(function () {
+  const { city, area } = this.location || {};
+  return [area, city].filter(Boolean).join(', ') || 'Ghana';
+});
 
 module.exports = mongoose.model("Product", productSchema);

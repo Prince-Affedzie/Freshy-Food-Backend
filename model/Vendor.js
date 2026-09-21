@@ -47,12 +47,8 @@ const vendorSchema = new mongoose.Schema({
   },
 
   location: {
-    campusArea: {
-      type: String,
-    },
-    hostel: {
-      type: String,
-    },
+    city: { type: String, trim: true, index: true },
+    area: { type: String, trim: true },
   },
 
   phone: {
@@ -183,7 +179,7 @@ const vendorSchema = new mongoose.Schema({
   timestamps: true,
 });
 
-vendorSchema.index({ campus: 1, isActive: 1 });
+vendorSchema.index({ 'location.city': 1, isActive: 1 });
 vendorSchema.index({ categories: 1 });
 vendorSchema.index({ businessType: 1, isActive: 1 });
 vendorSchema.index({ searchTags: 1 });
@@ -202,6 +198,11 @@ vendorSchema.index(
 
 vendorSchema.virtual('productCount').get(function () {
   return this.products?.length || 0;
+});
+
+vendorSchema.virtual('locationLabel').get(function () {
+  const { city, area } = this.location || {};
+  return [area, city].filter(Boolean).join(', ') || 'Ghana';
 });
 
 vendorSchema.set('toJSON', { virtuals: true });

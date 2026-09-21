@@ -17,8 +17,8 @@ const createVendor = async (req, res) => {
       phone,
       storeName,
       campus,
-      campusArea,
-      hostel,
+      city,
+      area,
       categories,
       businessType,
       searchTags,
@@ -50,7 +50,7 @@ const createVendor = async (req, res) => {
       });
     }
 
-    // 🔥 NEW: validate businessType if provided (schema default covers the
+    // NEW: validate businessType if provided (schema default covers the
     // omitted case, so this only rejects genuinely bad input)
     const validBusinessTypes = ['product', 'service', 'both'];
     if (businessType && !validBusinessTypes.includes(businessType)) {
@@ -136,7 +136,7 @@ const createVendor = async (req, res) => {
         : categories.split(',').map(c => c.trim()).filter(Boolean);
     }
 
-    // 🔥 NEW: parse searchTags the same way — accepts either a real array
+    //  NEW: parse searchTags the same way — accepts either a real array
     // (JSON clients) or a comma-separated string (multipart/form-data,
     // same pattern this codebase already uses for categories).
     let parsedSearchTags = [];
@@ -155,8 +155,8 @@ const createVendor = async (req, res) => {
       campus: campus || undefined,
       businessType: businessType || undefined, // schema default applies if omitted
       location: {
-        campusArea: campusArea || '',
-        hostel: hostel || '',
+        city: city || '',
+        area: area || '',
       },
       categories: parsedCategories.length > 0 ? parsedCategories : undefined,
       searchTags: parsedSearchTags.length > 0 ? parsedSearchTags : undefined,
