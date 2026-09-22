@@ -134,6 +134,8 @@ const productSchema = new mongoose.Schema(
       type: String,
       required: false,
       enum: [
+        '',
+        ``,
         "UG",
         "KNUST",
         "UCC",
