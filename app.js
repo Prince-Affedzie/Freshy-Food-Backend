@@ -1,6 +1,8 @@
 const express = require('express')
 const bodyParser = require('body-parser')
 const cookieParser = require('cookie-parser')
+const helmet = require( 'helmet');
+const rateLimit = require("express-rate-limit");
 const mongoose = require('mongoose')
 const Package = require('./model/Package');
 const {Server} = require('socket.io')
@@ -43,6 +45,7 @@ const {messagingSocket} = require("./services/messagingService")
 const { scheduleCleanup } = require('./services/logCleanUp');
 const { startBunnySweeper } = require('./workers/bunnySweeper');
 
+const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
 
 
 const redis = require("./config/redis");
@@ -56,9 +59,11 @@ async function testRedis() {
 
 const app  = express()
 
-app.use(express.json({}))
+app.use(express.json({limit: "100kb"}))
 app.use(cookieParser())
 app.use(bodyParser.urlencoded({extended:true}))
+app.use(helmet());
+app.use("/api/", apiLimiter);
 app.set('trust proxy', 1);
 
 app.use(cors({
