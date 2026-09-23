@@ -22,50 +22,6 @@ const invalidateProductCache = async () => {
   }
 };
 
-const VALID_CATEGORIES = [
-  "electronics",
-  "phones and tablets",
-  "computers and laptops",
-  "gaming",
-  "fashion",
-  "books-course-materials",
-  "hostel-items",
-  "appliances",
-  "furniture",
-  "beauty and grooming",
-  "sports and fitness",
-  "accessories",
-  "food and drinks",
-  "services",
-  "other",
-];
-
-const VALID_SUBCATEGORIES = [
-  "headphones-earbuds", "speakers", "chargers-cables", "power-banks",
-  "smartwatches", "cameras", "other-electronics",
-  "smartphones", "tablets", "ipads", "phone-cases", "screen-protectors",
-  "other-phone-accessories",
-  "laptops", "desktops", "monitors", "keyboards", "mouse",
-  "laptop-bags", "software", "other-computer-accessories",
-  "consoles", "games", "controllers", "gaming-accessories",
-  "men-clothing", "women-clothing", "unisex-clothing", "shoes", "bags",
-  "watches", "jewelry", "other-fashion",
-  "textbooks", "course-notes", "past-questions", "stationery",
-  "novels", "other-books",
-  "bedding", "kitchenware", "cleaning-supplies", "storage",
-  "lighting", "other-hostel",
-  "fans", "heaters", "irons", "kettles", "blenders", "microwaves",
-  "other-appliances",
-  "chairs", "tables-desks", "beds-mattresses", "shelves", "other-furniture",
-  "skincare", "makeup", "hair-care", "perfumes", "nail-care", "other-beauty",
-  "sports-equipment", "gym-gear", "activewear", "other-sports",
-  "phone-accessories", "laptop-accessories", "fashion-accessories", "other-accessories",
-  "snacks", "drinks", "homemade-meals", "baked-goods", "other-food",
-  "tutoring", "graphic-design", "photography", "printing-photocopy",
-  "laundry", "barbering-hairdressing", "tech-repairs", "other-services",
-  "miscellaneous",
-];
-
 // @desc    Get all products with filtering, search, sorting, pagination
 // @route   GET /api/products
 // @access  Public
@@ -189,7 +145,6 @@ const getProductById = asyncHandler(async (req, res) => {
   const relatedProducts = await Product.find({
     _id: { $ne: product._id },
     category: product.category,
-    //campus: product.campus,
     isAvailable: true
   })
     .limit(6)
@@ -213,7 +168,7 @@ const getProductById = asyncHandler(async (req, res) => {
     success: true,
     data: { 
       product, 
-     // relatedProducts,
+      relatedProducts,
       vendorProducts 
     }
   });
@@ -224,8 +179,6 @@ const getProductById = asyncHandler(async (req, res) => {
 // @access  Public
 const getProductsByCategory = asyncHandler(async (req, res) => {
   const { category } = req.params;
-  console.log(category)
-  console.log("I'm receving request")
   const { subcategory, campus, sort = "newest", page = 1, limit = 20 } = req.query;
   try{
 
