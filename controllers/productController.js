@@ -49,6 +49,8 @@ const getAllProducts = asyncHandler(async (req, res) => {
   if (campus) query.campus = campus;
   if (condition) query.condition = condition;
   if (negotiable !== undefined) query.negotiable = negotiable === 'true';
+  if (req.query.location) query['location.city'] = req.query.location;
+  if (req.query.suburb)   query['location.area'] = req.query.suburb;
 
   if (search) {
     query.$or = [
