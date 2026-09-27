@@ -140,28 +140,40 @@ const handleOrderPostProcessing = async (order, userId, notificationService) => 
 const createOrder = asyncHandler(async (req, res) => {
   const { id } = req.user;
   console.log("request being received")
-  const { 
-    paymentReference, 
+  const {
+    paymentReference,
     paymentStatus,
-    orderItems, 
-    shippingAddress, 
-    paymentMethod, 
+    orderItems,
+    shippingAddress,
+    paymentMethod,
     deliverySchedule, // preferredDay and preferredTime are inside here
     deliveryNote,
-    referralCode 
+    referralCode
   } = req.body;
   console.log(req.body)
-
+ 
   try {
     // 1. Validation Logic
     if (!orderItems?.length) return res.status(400).json({ message: 'No items' });
-    
+ 
+    // NEW: only two payment methods are supported right now
+    if (!['virtual', 'cash'].includes(paymentMethod)) {
+      return res.status(400).json({ message: 'Invalid payment method' });
+    }
+    const isCashOnDelivery = paymentMethod === 'cash';
+ 
+    // NEW: an online-paid order must carry a real reference, or it can never be
+    // verified or refunded later — this used to be silently accepted as undefined
+    if (!isCashOnDelivery && !paymentReference) {
+      return res.status(400).json({ message: 'Payment reference is required for online payments' });
+    }
+ 
     const { processedItems, itemsPrice, outOfStock } = await validateAndFetchItems(orderItems);
-    
+ 
     if (outOfStock.length > 0) {
       return res.status(400).json({ success: false, outOfStockItems: outOfStock });
     }
-
+ 
     // 2. Group items into Sub-Order format
     const grouped = groupItemsByVendor(processedItems);
     const subOrders = Object.keys(grouped).map(vendorId => ({
@@ -169,7 +181,7 @@ const createOrder = asyncHandler(async (req, res) => {
       items: grouped[vendorId],
       vendorStatus: 'Notified'
     }));
-
+ 
     // 3. Create the Master Order
     const masterOrder = await Order.create({
       user: id,
@@ -183,26 +195,31 @@ const createOrder = asyncHandler(async (req, res) => {
       },
       deliverySchedule, // FIXED: Passes the full object (preferredDay/Time)
       deliveryNote,
-      paymentReference,
+      // CHANGED: cash orders have no real payment reference and start off pending,
+      // not whatever paymentStatus the client happened to send
+      paymentReference: isCashOnDelivery ? undefined : paymentReference,
       paymentMethod,
-      paymentStatus,
+      paymentStatus: isCashOnDelivery ? 'pending' : paymentStatus,
       status: 'Processing',
-      isPaid: true
+      // CHANGED: was hardcoded `true` for every order, cash or online, verified or
+      // not — that's what let unverified/cash orders through as "paid". Now it
+      // reflects whether money has actually been received.
+      isPaid: isCashOnDelivery ? false : paymentStatus === 'paid'
     });
-
-    await attachReferralToOrder(masterOrder._id,referralCode, masterOrder.totalPrice,req.app.get("notificationService"));
-
+ 
+    await attachReferralToOrder(masterOrder._id, referralCode, masterOrder.totalPrice, req.app.get("notificationService"));
+ 
     // 4. Response Immediately
     res.status(200).json({
       success: true,
-      data: { 
-        id: masterOrder._id, 
+      data: {
+        id: masterOrder._id,
         orderNumber: masterOrder._id.toString().slice(-8).toUpperCase(),
-        totalPrice: masterOrder.totalPrice 
+        totalPrice: masterOrder.totalPrice
       }
     });
-
-     
+ 
+ 
  
     // 5. BACKGROUND TASKS
     setImmediate(async () => {
@@ -212,15 +229,15 @@ const createOrder = asyncHandler(async (req, res) => {
         console.error("Background processing failed:", err);
       }
     });
-
-   
-
+ 
+ 
+ 
   } catch (error) {
     console.error("Order Creation Error:", error);
     res.status(500).json({ success: false, message: 'Error creating order', error: error.message });
   }
 });
-
+ 
 
 
 const getOrderById = asyncHandler(async (req, res) => {
