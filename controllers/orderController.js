@@ -146,7 +146,7 @@ const createOrder = asyncHandler(async (req, res) => {
     orderItems,
     shippingAddress,
     paymentMethod,
-    deliverySchedule, // preferredDay and preferredTime are inside here
+    /*deliverySchedule, preferredDay and preferredTime are inside here*/
     deliveryNote,
     referralCode
   } = req.body;
@@ -193,7 +193,7 @@ const createOrder = asyncHandler(async (req, res) => {
         ...shippingAddress,
         region: shippingAddress.region || ''
       },
-      deliverySchedule, // FIXED: Passes the full object (preferredDay/Time)
+      
       deliveryNote,
       // CHANGED: cash orders have no real payment reference and start off pending,
       // not whatever paymentStatus the client happened to send
