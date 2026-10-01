@@ -54,11 +54,7 @@ mediaStatus: { type: String, enum: ['ready', 'processing', 'failed'], default: '
   },
   
   tags: [String],
-  campus: {
-    type: String,
-    enum: ['UG', 'KNUST', 'UCC', 'UPSA', 'GIMPA', 'ASHESI', 'UEW', 'ATU', 'ALL'],
-    default: 'ALL'
-  },
+  
   likes: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'

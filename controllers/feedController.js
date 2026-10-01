@@ -15,7 +15,7 @@ const { getVideoDetails, buildPlaybackUrls, isVideoReady, deleteVideo, } = requi
 // ─── Create feed post ───────────────────────────────────────────────────────
 const createFeedPost = async (req, res) => {
   try {
-    const { type, title, description, tags, campus, linkedProduct, media } = req.body;
+    const { type, title, description, tags, linkedProduct, media } = req.body;
 
     if (!type || !title) {
       return res.status(400).json({
@@ -64,7 +64,6 @@ const createFeedPost = async (req, res) => {
       title,
       description,
       tags: Array.isArray(tags) ? tags : [],
-      campus: campus || 'ALL',
       linkedProduct: linkedProduct || null,
       status: 'approved',
       media: processedMedia,
