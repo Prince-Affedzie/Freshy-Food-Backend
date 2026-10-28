@@ -16,7 +16,6 @@ const createVendor = async (req, res) => {
       name,
       phone,
       storeName,
-      campus,
       city,
       area,
       categories,
@@ -38,17 +37,6 @@ const createVendor = async (req, res) => {
       });
     }
 
-    // Validate campus if provided
-    const validCampuses = ['UG', 'KNUST', 'UCC', 'UEW', 'UPSA', 'GIMPA', 'ASHESI', 'ATU', 'OTHER'];
-    if (campus && !validCampuses.includes(campus)) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid campus',
-        validCampuses,
-      });
-    }
 
     // NEW: validate businessType if provided (schema default covers the
     // omitted case, so this only rejects genuinely bad input)
@@ -152,7 +140,6 @@ const createVendor = async (req, res) => {
       name,
       storeName: storeName || name,
       phone,
-      campus: campus || undefined,
       businessType: businessType || undefined, // schema default applies if omitted
       location: {
         city: city || '',

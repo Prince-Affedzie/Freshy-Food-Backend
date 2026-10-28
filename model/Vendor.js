@@ -30,22 +30,6 @@ const vendorSchema = new mongoose.Schema({
     index: true,
   },
 
-  campus: {
-    type: String,
-    enum: [
-      'UG',
-      'KNUST',
-      'UCC',
-      'UEW',
-      'UPSA',
-      'GIMPA',
-      'ASHESI',
-      'ATU',
-      'OTHER',
-    ],
-    index: true,
-  },
-
   location: {
     city: { type: String, trim: true, index: true },
     area: { type: String, trim: true },
