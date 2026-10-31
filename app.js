@@ -157,27 +157,27 @@ io.on('connection', (socket) => {
 app.use('/api', authLimiter, authRouter)
 
 // Chat — dedicated limiter
-app.use('/api', chatLimiter, chatRoute)
+app.use('/api',  chatRoute)
 
 // Read-heavy — feeds, products, stories
-app.use('/api', readLimiter, feedRoutes)
-app.use('/api', readLimiter, storyRoutes)
-app.use('/api', readLimiter, productrouter)
+app.use('/api',  feedRoutes)
+app.use('/api',  storyRoutes)
+app.use('/api',  productrouter)
 
 // Writes / general API — fallback limiter
 //app.use('/api', webHookRouter)
-app.use('/api', apiLimiter, uploadRouter)
-app.use("/api", apiLimiter, aiRouter);
-app.use('/api', apiLimiter, guestOrderRouter)
-app.use('/api', apiLimiter, packagerouter)
-app.use('/api', apiLimiter, vendorRouter)
-app.use('/api', apiLimiter, orderrouter)
-app.use('/api', apiLimiter, userRoute)
-app.use('/api', apiLimiter, moderationRoute)
-app.use('/api', apiLimiter, userActionRouter)
-app.use('/api', apiLimiter, paymentRoute)
-app.use('/api', apiLimiter, adminRoutes)
-app.use('/api', apiLimiter, referralRouter)
+app.use('/api',  uploadRouter)
+app.use("/api",  aiRouter);
+app.use('/api',  guestOrderRouter)
+app.use('/api',  packagerouter)
+app.use('/api',  vendorRouter)
+app.use('/api',  orderrouter)
+app.use('/api',  userRoute)
+app.use('/api',  moderationRoute)
+app.use('/api',  userActionRouter)
+app.use('/api',  paymentRoute)
+app.use('/api',  adminRoutes)
+app.use('/api',  referralRouter)
 
 //StoryService
 app.set('notificationService', notificationService);
