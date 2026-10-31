@@ -1,24 +1,24 @@
 const express = require('express')
 const bodyParser = require('body-parser')
 const cookieParser = require('cookie-parser')
-const helmet = require( 'helmet');
+const helmet = require('helmet');
 const rateLimit = require("express-rate-limit");
 const mongoose = require('mongoose')
 const Package = require('./model/Package');
-const {Server} = require('socket.io')
+const { Server } = require('socket.io')
 const http = require('http')
 const cors = require('cors')
 const User = require('./model/User');
 const admin = require('firebase-admin');
 require('dotenv').config()
 const NotificationService = require('./services/notificationService');
-const StoryService = require ('./services/storyService')
-const {authenticateSocketConnection} = require('./Validators/authenticateSocketConnection')
+const StoryService = require('./services/storyService')
+const { authenticateSocketConnection } = require('./Validators/authenticateSocketConnection')
 const Product = require('./model/Product');
 const Vendor = require('./model/Vendor');
 const FeedPost = require('./model/FeedPost');
-const serviceAccount = process.env.FIREBASE_CONFIG 
-  ? JSON.parse(process.env.FIREBASE_CONFIG) 
+const serviceAccount = process.env.FIREBASE_CONFIG
+  ? JSON.parse(process.env.FIREBASE_CONFIG)
   : require('./config/serviceAccountKey.json');
 
 const packagerouter = require('./routes/packageRoute')
@@ -40,108 +40,158 @@ const uploadRouter = require('./routes/uploadRoutes')
 const moderationRoute = require('./routes/moderationRoutes')
 const storyRoutes = require('./routes/storyRoutes')
 
-const {messagingSocket} = require("./services/messagingService")
+const { messagingSocket } = require("./services/messagingService")
 
 const { scheduleCleanup } = require('./services/logCleanUp');
 const { startBunnySweeper } = require('./workers/bunnySweeper');
 
-const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
-
-
 const redis = require("./config/redis");
+
+// ─────────────────────────────────────────────────────────────
+// Rate limiters (tiered by route sensitivity)
+// ─────────────────────────────────────────────────────────────
+
+// Strict: auth endpoints (login, register, password reset, etc.)
+// Only counts failed attempts so legitimate retries aren't punished.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many authentication attempts, please try again later.' },
+});
+
+// Write operations: create / update / delete
+const writeLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please slow down.' },
+});
+
+// Read-heavy routes: feeds, listings, products
+const readLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again shortly.' },
+});
+
+// Chat/polling: more lenient
+const chatLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many messages, please slow down.' },
+});
+
+// General fallback for routes without a specific limiter
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+});
 
 async function testRedis() {
   await redis.set("Cedi_Mart", "CediMart");
   const value = await redis.get("Cedi_Mart");
-
   console.log(value);
 }
 
-const app  = express()
+const app = express()
 
-app.use(express.json({limit: "100kb"}))
-app.use(cookieParser())
-app.use(bodyParser.urlencoded({extended:true}))
-app.use(helmet());
-app.use("/api/", apiLimiter);
+// Trust proxy must come BEFORE any rate limiter that reads req.ip
 app.set('trust proxy', 1);
 
+app.use(express.json({ limit: "100kb" }))
+app.use(cookieParser())
+app.use(bodyParser.urlencoded({ extended: true }))
+app.use(helmet());
+
 app.use(cors({
-    origin: true,
-    credentials: true
+  origin: true,
+  credentials: true
 }))
 
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount) 
+  credential: admin.credential.cert(serviceAccount)
 });
-
 
 const server = http.createServer(app)
 
-
-const io = new Server(server,{
-    cors:{
-        origin:true,
-        credentials:true,
-        methods: ['GET', 'POST']
-    }
+const io = new Server(server, {
+  cors: {
+    origin: true,
+    credentials: true,
+    methods: ['GET', 'POST']
+  }
 })
 
 io.use(authenticateSocketConnection)
 const notificationService = new NotificationService(io);
 const storyService = new StoryService();
 
+io.on('connection', (socket) => {
+  const userId = socket.user.id
+  console.log('Someone joined the connection')
+  socket.join(userId)
 
-io.on('connection',(socket)=>{
-    const userId = socket.user.id
-    console.log('Someone joined the connection')
-    socket.join(userId)
-    //socketHandler(io,socket)
+  socket.on('disconnect', () => {
+    console.log("User Disconnected")
+  })
 
-    socket.on('disconnect',()=>{
-        console.log("User Disconnected")
-    })
-
-    messagingSocket(io, socket, notificationService);
-
+  messagingSocket(io, socket, notificationService);
 })
 
-//app.use('/api',webHookRouter)
-app.use('/api',feedRoutes)
-app.use('/api',storyRoutes)
-app.use('/api',uploadRouter)
-app.use("/api",aiRouter );
-app.use('/api',guestOrderRouter)
-app.use('/api',packagerouter)
-app.use('/api',productrouter)
-app.use('/api',vendorRouter)
-app.use('/api',orderrouter)
-app.use('/api',userRoute)
-app.use('/api',moderationRoute)
-app.use('/api',userActionRouter)
-app.use('/api',paymentRoute)
-app.use('/api',adminRoutes)
-app.use('/api',authRouter)
-app.use('/api',chatRoute)
-app.use('/api',referralRouter)
+// ─────────────────────────────────────────────────────────────
+// Routes (with per-route rate limiters)
+// ─────────────────────────────────────────────────────────────
+
+// Auth — strict
+app.use('/api', authLimiter, authRouter)
+
+// Chat — dedicated limiter
+app.use('/api', chatLimiter, chatRoute)
+
+// Read-heavy — feeds, products, stories
+app.use('/api', readLimiter, feedRoutes)
+app.use('/api', readLimiter, storyRoutes)
+app.use('/api', readLimiter, productrouter)
+
+// Writes / general API — fallback limiter
+//app.use('/api', webHookRouter)
+app.use('/api', apiLimiter, uploadRouter)
+app.use("/api", apiLimiter, aiRouter);
+app.use('/api', apiLimiter, guestOrderRouter)
+app.use('/api', apiLimiter, packagerouter)
+app.use('/api', apiLimiter, vendorRouter)
+app.use('/api', apiLimiter, orderrouter)
+app.use('/api', apiLimiter, userRoute)
+app.use('/api', apiLimiter, moderationRoute)
+app.use('/api', apiLimiter, userActionRouter)
+app.use('/api', apiLimiter, paymentRoute)
+app.use('/api', apiLimiter, adminRoutes)
+app.use('/api', apiLimiter, referralRouter)
 
 //StoryService
 app.set('notificationService', notificationService);
 app.set('storyService', storyService);
 
-
-
 mongo_connection_url = process.env.DB_URL
 
 mongoose.connect(mongo_connection_url)
-         .then(()=>{
-        server.listen(process.env.PORT || 5000)
-        
-        
-        console.log('Listening on port 5000')
-         testRedis();
-         
-         scheduleCleanup();
-         startBunnySweeper();
-         }).catch((err)=>console.log(err))
+  .then(() => {
+    server.listen(process.env.PORT || 5000)
 
+    console.log('Listening on port 5000')
+    testRedis();
+
+    scheduleCleanup();
+    startBunnySweeper();
+  }).catch((err) => console.log(err))
