@@ -154,23 +154,27 @@ io.on('connection', (socket) => {
 // ─────────────────────────────────────────────────────────────
 
 // Auth — strict
+app.use('/api',  feedRoutes)
+app.use('/api',  storyRoutes)
+app.use('/api',  productrouter)
+app.use("/api",  aiRouter);
+app.use('/api',  guestOrderRouter)
+app.use('/api',  vendorRouter)
+
 app.use('/api', authLimiter, authRouter)
 
 // Chat — dedicated limiter
 app.use('/api',  chatRoute)
 
 // Read-heavy — feeds, products, stories
-app.use('/api',  feedRoutes)
-app.use('/api',  storyRoutes)
-app.use('/api',  productrouter)
+
 
 // Writes / general API — fallback limiter
 //app.use('/api', webHookRouter)
 app.use('/api',  uploadRouter)
-app.use("/api",  aiRouter);
-app.use('/api',  guestOrderRouter)
+
 app.use('/api',  packagerouter)
-app.use('/api',  vendorRouter)
+
 app.use('/api',  orderrouter)
 app.use('/api',  userRoute)
 app.use('/api',  moderationRoute)
